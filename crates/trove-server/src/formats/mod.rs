@@ -1,10 +1,14 @@
 //! Package-manager protocol endpoints, mounted at `/repository/{name}/...`.
 
+pub mod apt;
 pub mod cargo;
+pub mod docker;
 pub mod maven;
 pub mod npm;
+pub mod path_proxy;
 pub mod pypi;
 pub mod raw;
+pub mod yum;
 
 use std::collections::HashMap;
 
@@ -125,6 +129,9 @@ async fn dispatch_inner(state: AppState, repo_name: String, path: String, req: R
         Format::Npm => npm::handle(ctx).await,
         Format::Pypi => pypi::handle(ctx).await,
         Format::Cargo => cargo::handle(ctx).await,
+        Format::Apt => apt::handle(ctx).await,
+        Format::Yum => yum::handle(ctx).await,
+        Format::Docker => docker::handle_repository_path(ctx).await,
     };
     result.unwrap_or_else(|e| render_error(format, e, json_errors))
 }

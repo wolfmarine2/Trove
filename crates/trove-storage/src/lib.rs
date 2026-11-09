@@ -239,6 +239,13 @@ impl BlobStore {
         Ok(res.into_stream().map_err(std::io::Error::other).boxed())
     }
 
+    /// Open the byte range `start..end` (end exclusive) of a blob for streaming.
+    pub async fn open_range(&self, sha256: &str, start: u64, end: u64) -> Result<ByteStream> {
+        let opts = object_store::GetOptions::default().with_range(Some(start..end));
+        let res = self.inner.store.get_opts(&Self::location(sha256)?, opts).await.map_err(store_err)?;
+        Ok(res.into_stream().map_err(std::io::Error::other).boxed())
+    }
+
     /// Read a whole blob into memory (for metadata documents). Bounded by `limit`.
     pub async fn read_all(&self, sha256: &str, limit: usize) -> Result<Bytes> {
         let mut stream = self.open(sha256).await?;
@@ -280,6 +287,12 @@ mod tests {
         let again = store.ingest_bytes(Bytes::from_static(b"hello world")).await.unwrap();
         assert_eq!(again.sha256, info.sha256);
 
+        let mut part = store.open_range(&info.sha256, 6, 11).await.unwrap();
+        let mut got = Vec::new();
+        while let Some(c) = part.next().await {
+            got.extend_from_slice(&c.unwrap());
+        }
+        assert_eq!(got, b"world");
         let data = store.read_all(&info.sha256, 1024).await.unwrap();
         assert_eq!(&data[..], b"hello world");
         assert!(matches!(store.read_all(&info.sha256, 4).await, Err(Error::PayloadTooLarge)));

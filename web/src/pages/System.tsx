@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { api } from "../api";
-import { ErrorNote, Loading, Notice, useAsync } from "../components";
+import { api, type Settings } from "../api";
+import { ErrorNote, Field, Loading, Notice, useAsync } from "../components";
 import { useI18n } from "../i18n";
 import { useSession } from "../session";
 import { formatBytes, relativeTime } from "../util";
@@ -46,6 +46,16 @@ export function SystemPage() {
       </header>
       <ErrorNote error={error ?? settings.error ?? stats.error} />
       {(settings.loading || stats.loading) && !s && <Loading />}
+
+      {settings.data && (
+        <section className="subsection">
+          <DockerDefault
+            value={settings.data.docker_default_repository}
+            onSaved={(s) => settings.setData(s)}
+            onError={setError}
+          />
+        </section>
+      )}
 
       {settings.data && (
         <section className="subsection">
@@ -108,5 +118,37 @@ export function SystemPage() {
         </section>
       )}
     </section>
+  );
+}
+
+function DockerDefault({ value, onSaved, onError }: { value: string; onSaved: (s: Settings) => void; onError: (e: unknown) => void }) {
+  const { t } = useI18n();
+  const { data: repos } = useAsync(() => api.repos(), []);
+  const [saved, setSaved] = useState(false);
+  const docker = (repos ?? []).filter((r) => r.format === "docker");
+  return (
+    <>
+      <Field label={t("system.dockerDefault")} help={t("system.dockerDefaultHelp")} htmlFor="docker-default">
+        <select
+          id="docker-default"
+          value={value}
+          onChange={async (e) => {
+            setSaved(false);
+            try {
+              onSaved(await api.updateSettings({ docker_default_repository: e.target.value }));
+              setSaved(true);
+            } catch (err) {
+              onError(err);
+            }
+          }}
+        >
+          <option value="">{t("system.none")}</option>
+          {docker.map((r) => (
+            <option key={r.id} value={r.name}>{r.name}</option>
+          ))}
+        </select>
+      </Field>
+      {saved && <Notice>{t("system.saved")}</Notice>}
+    </>
   );
 }

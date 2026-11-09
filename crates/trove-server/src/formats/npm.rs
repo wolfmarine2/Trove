@@ -202,7 +202,7 @@ pub fn packument<'a>(
             RepoKind::Proxy => {
                 let remote = repo.proxy().map(|p| p.remote_url.as_str()).unwrap_or_default();
                 let url = content::join_url(remote, &escaped(name));
-                let opts = proxy::FetchOpts { metadata: true, accept: Some("application/json") };
+                let opts = proxy::FetchOpts { metadata: true, accept: Some("application/json"), ..Default::default() };
                 proxy::fetch_opts(state, repo, &packument_path(name), &url, opts).await?
             }
             RepoKind::Group => {

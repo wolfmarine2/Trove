@@ -292,18 +292,89 @@ fn not_modified(req: &HeaderMap, etag: &str) -> bool {
 }
 
 /// Stream an asset to the client with integrity headers.
+/// A `Range` header that cannot be satisfied (HTTP 416).
+#[derive(Debug, PartialEq, Eq)]
+pub struct Unsatisfiable;
+
+/// Parse a single `Range: bytes=…` header into an inclusive (start, end).
+/// `Ok(None)` means "serve the whole body".
+pub fn parse_range(value: &str, size: u64) -> std::result::Result<Option<(u64, u64)>, Unsatisfiable> {
+    let Some(spec) = value.trim().strip_prefix("bytes=") else { return Ok(None) };
+    if spec.contains(',') || size == 0 {
+        return Ok(None); // multi-range: fall back to a full response
+    }
+    let (a, b) = spec.split_once('-').ok_or(Unsatisfiable)?;
+    let (a, b) = (a.trim(), b.trim());
+    let range = if a.is_empty() {
+        let n: u64 = b.parse().map_err(|_| Unsatisfiable)?;
+        if n == 0 {
+            return Err(Unsatisfiable);
+        }
+        (size.saturating_sub(n), size - 1)
+    } else {
+        let start: u64 = a.parse().map_err(|_| Unsatisfiable)?;
+        let end: u64 = if b.is_empty() { size - 1 } else { b.parse::<u64>().map_err(|_| Unsatisfiable)?.min(size - 1) };
+        if start > end || start >= size {
+            return Err(Unsatisfiable);
+        }
+        (start, end)
+    };
+    Ok(Some(range))
+}
+
+fn not_modified_since(req: &HeaderMap, updated_at: i64) -> bool {
+    if req.contains_key(header::IF_NONE_MATCH) {
+        return false;
+    }
+    req.get(header::IF_MODIFIED_SINCE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| chrono::DateTime::parse_from_rfc2822(v).ok())
+        .is_some_and(|since| updated_at / 1000 <= since.timestamp())
+}
+
+/// Stream an asset to the client with integrity headers. Supports
+/// conditional requests and single byte ranges (resumable downloads).
 pub async fn serve_asset(state: &AppState, asset: &Asset, method: &Method, req: &HeaderMap) -> Result<Response> {
     let etag = etag_of(asset);
-    let mut resp = if not_modified(req, &etag) {
+    let size = asset.blob.size.max(0) as u64;
+    let range = match req.get(header::RANGE).and_then(|v| v.to_str().ok()) {
+        // If-Range with a different validator means "send everything".
+        Some(_) if req.get(header::IF_RANGE).and_then(|v| v.to_str().ok()).is_some_and(|v| v != etag) => Ok(None),
+        Some(v) => parse_range(v, size),
+        None => Ok(None),
+    };
+    let mut resp = if not_modified(req, &etag) || not_modified_since(req, asset.updated_at) {
         StatusCode::NOT_MODIFIED.into_response()
+    } else if range.is_err() {
+        let mut r = StatusCode::RANGE_NOT_SATISFIABLE.into_response();
+        if let Ok(v) = HeaderValue::from_str(&format!("bytes */{size}")) {
+            r.headers_mut().insert(header::CONTENT_RANGE, v);
+        }
+        r
     } else if method == Method::HEAD {
         let mut r = Response::new(Body::empty());
-        r.headers_mut().insert(header::CONTENT_LENGTH, HeaderValue::from(asset.blob.size));
+        r.headers_mut().insert(header::CONTENT_LENGTH, HeaderValue::from(size));
         r
     } else {
-        let stream = state.blobs.open(&asset.blob.sha256).await?;
-        let mut r = Response::new(Body::from_stream(stream));
-        r.headers_mut().insert(header::CONTENT_LENGTH, HeaderValue::from(asset.blob.size));
+        let mut r = match range {
+            Ok(Some((start, end))) => {
+                let stream = state.blobs.open_range(&asset.blob.sha256, start, end + 1).await?;
+                let mut r = Response::new(Body::from_stream(stream));
+                *r.status_mut() = StatusCode::PARTIAL_CONTENT;
+                r.headers_mut().insert(header::CONTENT_LENGTH, HeaderValue::from(end - start + 1));
+                if let Ok(v) = HeaderValue::from_str(&format!("bytes {start}-{end}/{size}")) {
+                    r.headers_mut().insert(header::CONTENT_RANGE, v);
+                }
+                r
+            }
+            _ => {
+                let stream = state.blobs.open(&asset.blob.sha256).await?;
+                let mut r = Response::new(Body::from_stream(stream));
+                r.headers_mut().insert(header::CONTENT_LENGTH, HeaderValue::from(size));
+                r
+            }
+        };
+        r.headers_mut().insert(header::ACCEPT_RANGES, HeaderValue::from_static("bytes"));
         Metrics::inc(&state.metrics.downloads);
         // Record downloads at most hourly per asset to limit write load.
         if asset.last_downloaded_at.is_none_or(|t| now_millis() - t > 3_600_000) {
@@ -364,6 +435,17 @@ mod tests {
     fn encoding() {
         assert_eq!(encode_path("a b/c#d/e.jar"), "a%20b/c%23d/e.jar");
         assert_eq!(join_url("https://x/maven2/", "/org/a"), "https://x/maven2/org/a");
+    }
+
+    #[test]
+    fn ranges() {
+        assert_eq!(parse_range("bytes=0-4", 10), Ok(Some((0, 4))));
+        assert_eq!(parse_range("bytes=5-", 10), Ok(Some((5, 9))));
+        assert_eq!(parse_range("bytes=-3", 10), Ok(Some((7, 9))));
+        assert_eq!(parse_range("bytes=8-100", 10), Ok(Some((8, 9))));
+        assert_eq!(parse_range("bytes=10-", 10), Err(Unsatisfiable));
+        assert_eq!(parse_range("bytes=0-1,4-5", 10), Ok(None));
+        assert_eq!(parse_range("items=0-1", 10), Ok(None));
     }
 
     #[test]

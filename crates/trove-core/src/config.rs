@@ -117,7 +117,7 @@ impl Default for SecurityConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct HttpClientConfig {
-    /// Total request timeout for upstream fetches, in seconds.
+    /// Idle timeout for upstream fetches: maximum seconds without receiving data.
     pub timeout_secs: u64,
     /// Connect timeout, in seconds.
     pub connect_timeout_secs: u64,

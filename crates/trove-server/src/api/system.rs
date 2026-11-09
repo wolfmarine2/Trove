@@ -12,7 +12,7 @@ use crate::auth::Principal;
 use crate::content;
 use crate::error::ApiResult;
 use crate::gc;
-use crate::state::{AppState, SETTING_ANONYMOUS_READ};
+use crate::state::{AppState, SETTING_ANONYMOUS_READ, SETTING_DOCKER_DEFAULT_REPO};
 
 pub async fn status(State(state): State<AppState>) -> Json<Value> {
     Json(json!({
@@ -73,8 +73,10 @@ pub async fn stats(State(state): State<AppState>, principal: Principal, headers:
 
 pub async fn get_settings(State(state): State<AppState>, principal: Principal) -> ApiResult<Json<Value>> {
     principal.require_admin()?;
+    let docker_default = state.db.get_setting(SETTING_DOCKER_DEFAULT_REPO).await?.unwrap_or_default();
     Ok(Json(json!({
         "anonymous_read": state.anonymous_read(),
+        "docker_default_repository": docker_default,
         "base_url": state.cfg.server.base_url,
         "max_upload_mb": state.cfg.server.max_upload_mb,
         "session_ttl_hours": state.cfg.security.session_ttl_hours,
@@ -86,6 +88,8 @@ pub async fn get_settings(State(state): State<AppState>, principal: Principal) -
 #[derive(Deserialize)]
 pub struct SettingsReq {
     anonymous_read: Option<bool>,
+    /// Empty string clears the default.
+    docker_default_repository: Option<String>,
 }
 
 pub async fn put_settings(
@@ -99,6 +103,17 @@ pub async fn put_settings(
         state.db.set_setting(SETTING_ANONYMOUS_READ, if v { "true" } else { "false" }).await?;
         state.anonymous_read.store(v, Ordering::Relaxed);
         audit::record(&state, &principal, &headers, "settings.update", "anonymous_read", v.to_string()).await;
+    }
+    if let Some(name) = req.docker_default_repository {
+        let name = name.trim().to_string();
+        if !name.is_empty() {
+            let repo = state.repo(&name).await?;
+            if repo.format != trove_core::model::Format::Docker {
+                return Err(trove_core::Error::bad_request(format!("'{name}' is not a Docker repository")).into());
+            }
+        }
+        state.db.set_setting(SETTING_DOCKER_DEFAULT_REPO, &name).await?;
+        audit::record(&state, &principal, &headers, "settings.update", "docker_default_repository", name).await;
     }
     get_settings(State(state), principal).await
 }

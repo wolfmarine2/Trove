@@ -2789,7 +2789,7 @@ dependencies = [
 
 [[package]]
 name = "trove-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "hex",
@@ -2805,7 +2805,7 @@ dependencies = [
 
 [[package]]
 name = "trove-db"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "serde",
@@ -2819,7 +2819,7 @@ dependencies = [
 
 [[package]]
 name = "trove-server"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "argon2",
@@ -2860,7 +2860,7 @@ dependencies = [
 
 [[package]]
 name = "trove-storage"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "bytes",

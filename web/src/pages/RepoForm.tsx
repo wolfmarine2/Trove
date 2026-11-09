@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import {
   api,
   FORMATS,
-  KINDS,
+  supportedKinds,
   type Format,
   type RepoConfig,
   type RepoKind,
@@ -19,6 +19,9 @@ const DEFAULT_REMOTES: Record<Format, string> = {
   npm: "https://registry.npmjs.org/",
   pypi: "https://pypi.org/simple/",
   cargo: "https://index.crates.io/",
+  docker: "https://registry-1.docker.io",
+  apt: "http://archive.ubuntu.com/ubuntu/",
+  yum: "https://repo.openeuler.org/openEuler-24.03-LTS/OS/x86_64/",
   raw: "",
 };
 
@@ -66,6 +69,7 @@ export function RepoForm({ existing, onSaved }: { existing?: Repository; onSaved
     if (!editing && (remoteUrl === "" || Object.values(DEFAULT_REMOTES).includes(remoteUrl))) setRemoteUrl(DEFAULT_REMOTES[f]);
     setFormat(f);
     setMembers([]);
+    if (!supportedKinds(f).includes(kind)) setKind(supportedKinds(f)[0]);
   };
 
   const move = (i: number, d: -1 | 1) => {
@@ -124,7 +128,7 @@ export function RepoForm({ existing, onSaved }: { existing?: Repository; onSaved
           <fieldset className="choice">
             <legend>{t("form.kind")}</legend>
             <div className="choice-row">
-              {KINDS.map((k) => (
+              {supportedKinds(format).map((k) => (
                 <label key={k} className={`choice-item choice-kind ${kind === k ? "on" : ""}`}>
                   <input type="radio" name="kind" value={k} checked={kind === k} onChange={() => setKind(k)} />
                   <span className="choice-title">

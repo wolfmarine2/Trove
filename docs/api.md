@@ -27,9 +27,15 @@ HTTP status. Timestamps are milliseconds since the Unix epoch.
 | PUT/DELETE | `/users/{id}` | admin | Update (role, disabled, password) / delete |
 | GET/POST | `/tokens` | user | Own API tokens / create `{name, expires_in_days}` → `{token, secret}` |
 | DELETE | `/tokens/{id}` | user | Revoke |
-| GET/PUT | `/system/settings` | admin | `{anonymous_read}` |
+| GET/PUT | `/system/settings` | admin | `{anonymous_read, docker_default_repository}` |
 | POST | `/system/gc` | admin | Run blob garbage collection now |
 | GET | `/system/audit?actor=&action=&limit=&offset=` | admin | Audit events, newest first |
+
+Supported `kind` per `format`: maven, npm, pypi, cargo, raw — hosted, proxy,
+group; docker — proxy, group; apt, yum — proxy.
+
+The Docker Registry API v2 is served separately under `/v2/` (see
+[client setup](formats.md#docker--oci-pull-through-cache)).
 
 Repository `config` shape:
 

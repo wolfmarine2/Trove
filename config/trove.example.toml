@@ -51,6 +51,7 @@ session_ttl_hours = 12
 
 [http_client]
 # Settings for requests to remote registries (proxy repositories).
+# Seconds without receiving any data before a download is abandoned.
 timeout_secs = 300
 connect_timeout_secs = 15
 # Outbound proxy, e.g. "http://egress.internal:3128". Empty: HTTPS_PROXY /

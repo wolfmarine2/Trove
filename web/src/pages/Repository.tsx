@@ -4,7 +4,7 @@ import { api, type Asset, type Repository } from "../api";
 import { Code, CopyButton, ErrorNote, FormatTag, KindGlyph, KindLabel, Loading, Notice, useAsync, useConfirm } from "../components";
 import { useI18n } from "../i18n";
 import { useSession } from "../session";
-import { clientSnippets, formatBytes, formatTime, relativeTime } from "../util";
+import { clientSnippets, displayUrl, formatBytes, formatTime, relativeTime } from "../util";
 import { RepoForm } from "./RepoForm";
 
 export function RepositoryPage() {
@@ -36,8 +36,8 @@ export function RepositoryPage() {
         </div>
         {repo.description && <p className="lede">{repo.description}</p>}
         <div className={`repo-url rule-${repo.format}`}>
-          <code>{repo.url}/</code>
-          <CopyButton text={`${repo.url}/`} />
+          <code>{displayUrl(repo)}</code>
+          <CopyButton text={displayUrl(repo)} />
         </div>
         <RepoFacts repo={repo} />
       </header>
@@ -92,7 +92,13 @@ function Setup({ repo }: { repo: Repository }) {
       {snippets.map((s, i) => (
         <Code key={i} file={s.file} code={s.code} />
       ))}
-      <p className="help">{t("repo.tokenNote")}</p>
+      {repo.format === "docker" && (
+        <p className="help">
+          {t("repo.dockerNote", { registry: repo.url.replace(/^https?:\/\//, "").replace(/\/repository\/.*$/, ""), name: repo.name })}
+        </p>
+      )}
+      {(repo.format === "apt" || repo.format === "yum") && <p className="help">{t("repo.osNote")}</p>}
+      {!["apt", "yum", "docker"].includes(repo.format) && <p className="help">{t("repo.tokenNote")}</p>}
     </div>
   );
 }

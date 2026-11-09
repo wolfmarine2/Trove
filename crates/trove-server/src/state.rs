@@ -14,6 +14,8 @@ use trove_storage::BlobStore;
 use crate::auth::CredentialCache;
 
 pub const SETTING_ANONYMOUS_READ: &str = "anonymous_read";
+/// Docker repository serving `/v2/<image>` when the first segment is not a repository name.
+pub const SETTING_DOCKER_DEFAULT_REPO: &str = "docker_default_repository";
 
 /// Process-wide counters exported at `/metrics`.
 #[derive(Default)]
@@ -49,6 +51,8 @@ pub struct Inner {
     inflight: Mutex<HashMap<String, Arc<Mutex<()>>>>,
     /// Short-lived cache of upstream 404s.
     negative: Mutex<HashMap<String, Instant>>,
+    /// Upstream registry bearer tokens: key → (token, expiry).
+    registry_tokens: Mutex<HashMap<String, (String, Instant)>>,
     pub started_at: Instant,
 }
 
@@ -86,6 +90,7 @@ impl AppState {
             gc_lock: RwLock::new(()),
             inflight: Mutex::new(HashMap::new()),
             negative: Mutex::new(HashMap::new()),
+            registry_tokens: Mutex::new(HashMap::new()),
             started_at: Instant::now(),
         })))
     }
@@ -131,6 +136,20 @@ impl AppState {
         map.insert(key.to_string(), Instant::now());
     }
 
+    pub async fn cached_registry_token(&self, key: &str) -> Option<String> {
+        let map = self.registry_tokens.lock().await;
+        map.get(key).filter(|(_, exp)| *exp > Instant::now()).map(|(t, _)| t.clone())
+    }
+
+    pub async fn cache_registry_token(&self, key: &str, token: &str, ttl: Duration) {
+        let mut map = self.registry_tokens.lock().await;
+        if map.len() > 10_000 {
+            let now = Instant::now();
+            map.retain(|_, (_, exp)| *exp > now);
+        }
+        map.insert(key.to_string(), (token.to_string(), Instant::now() + ttl));
+    }
+
     pub async fn clear_negative_for_repo(&self, repo_id: &str) {
         let prefix = format!("{repo_id}:");
         self.negative.lock().await.retain(|k, _| !k.starts_with(&prefix));
@@ -141,7 +160,8 @@ fn build_http_client(cfg: &Config) -> anyhow::Result<reqwest::Client> {
     let hc = &cfg.http_client;
     let mut builder = reqwest::Client::builder()
         .user_agent(hc.user_agent.clone())
-        .timeout(Duration::from_secs(hc.timeout_secs))
+        // Idle timeout per read: large artifacts may legitimately take long overall.
+        .read_timeout(Duration::from_secs(hc.timeout_secs))
         .connect_timeout(Duration::from_secs(hc.connect_timeout_secs))
         .redirect(reqwest::redirect::Policy::limited(10));
     if !hc.proxy.is_empty() {

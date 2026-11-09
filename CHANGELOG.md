@@ -6,6 +6,26 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-09
+
+### Added
+- Docker / OCI proxy and group repositories (Registry API v2 under `/v2/`):
+  pull-through cache for Docker Hub, GHCR, Quay, Harbor and other v2
+  registries with automatic bearer-token negotiation, digest verification,
+  tag revalidation, cross-repository layer deduplication, path-based routing
+  and a default repository for `registry-mirrors`.
+- APT proxy repositories (Debian, Ubuntu, Kylin, UOS) with by-hash support and
+  index refresh tied to `InRelease`.
+- YUM / DNF proxy repositories (openEuler, RHEL family, Fedora, EPEL) with
+  repodata refresh tied to `repomd.xml`.
+- Byte-range requests (resumable downloads) and `If-Modified-Since` on all
+  downloads.
+
+### Changed
+- `http_client.timeout_secs` is now an idle (read) timeout so large downloads
+  are not cut off.
+- An asset's `updated_at` only changes when its content changes.
+
 ## [0.1.0] - 2026-11-09
 
 ### Added

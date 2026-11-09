@@ -183,8 +183,11 @@ async fn proxy_index(state: &AppState, repo: &Repository, project: &str) -> Resu
     let remote = repo.proxy().map(|p| p.remote_url.as_str()).unwrap_or_default();
     let url = content::join_url(remote, &format!("{project}/"));
     let cache_path = format!("simple/{project}/index.html");
-    let opts =
-        proxy::FetchOpts { metadata: true, accept: Some("application/vnd.pypi.simple.v1+json, text/html;q=0.1") };
+    let opts = proxy::FetchOpts {
+        metadata: true,
+        accept: Some("application/vnd.pypi.simple.v1+json, text/html;q=0.1"),
+        ..Default::default()
+    };
     let Some(asset) = proxy::fetch_opts(state, repo, &cache_path, &url, opts).await? else { return Ok(vec![]) };
     let data = content::read_asset(state, &asset).await?;
     let page_url = asset.attributes.get("upstream_url").and_then(Value::as_str).unwrap_or(&url).to_string();

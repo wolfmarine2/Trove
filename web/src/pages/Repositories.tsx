@@ -4,7 +4,7 @@ import { api } from "../api";
 import { CopyButton, ErrorNote, FormatTag, KindLabel, Loading, useAsync } from "../components";
 import { useI18n } from "../i18n";
 import { useSession } from "../session";
-import { formatBytes } from "../util";
+import { displayUrl, formatBytes } from "../util";
 
 export function RepositoriesPage() {
   const { t } = useI18n();
@@ -71,8 +71,8 @@ export function RepositoriesPage() {
                     <td className="num">{r.asset_count.toLocaleString()}</td>
                     <td className="num">{formatBytes(r.total_size)}</td>
                     <td className="url-cell">
-                      <code>{r.url}/</code>
-                      <CopyButton text={`${r.url}/`} />
+                      <code>{displayUrl(r)}</code>
+                      <CopyButton text={displayUrl(r)} />
                     </td>
                   </tr>
                 ))}

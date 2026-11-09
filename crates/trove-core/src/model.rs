@@ -46,8 +46,22 @@ string_enum!(
         Npm => "npm",
         Pypi => "pypi",
         Cargo => "cargo",
+        Docker => "docker",
+        Apt => "apt",
+        Yum => "yum",
     }
 );
+
+impl Format {
+    /// Repository kinds implemented for this format.
+    pub fn supported_kinds(&self) -> &'static [RepoKind] {
+        match self {
+            Format::Apt | Format::Yum => &[RepoKind::Proxy],
+            Format::Docker => &[RepoKind::Proxy, RepoKind::Group],
+            _ => &[RepoKind::Hosted, RepoKind::Proxy, RepoKind::Group],
+        }
+    }
+}
 
 string_enum!(
     /// How a repository obtains its content (mirrors Nexus' recipe types).
@@ -168,6 +182,12 @@ impl Repository {
     /// Validate structural invariants of a repository definition.
     pub fn validate(&self) -> Result<(), Error> {
         crate::util::validate_name(&self.name)?;
+        if !self.format.supported_kinds().contains(&self.kind) {
+            return Err(Error::bad_request(format!(
+                "{} repositories do not support the {} type yet",
+                self.format, self.kind
+            )));
+        }
         match self.kind {
             RepoKind::Hosted => {}
             RepoKind::Proxy => {
@@ -273,7 +293,8 @@ mod tests {
         for f in Format::ALL {
             assert_eq!(f.as_str().parse::<Format>().unwrap(), *f);
         }
-        assert!("docker".parse::<Format>().is_err());
+        assert!("helm".parse::<Format>().is_err());
+        assert!(Format::Apt.supported_kinds() == [RepoKind::Proxy]);
         assert_eq!(serde_json::to_string(&RepoKind::Proxy).unwrap(), "\"proxy\"");
     }
 

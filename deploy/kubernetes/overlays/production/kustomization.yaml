@@ -30,4 +30,4 @@ configMapGenerator:
 images:
   - name: trove
     newName: registry.example.com/platform/trove
-    newTag: 0.1.0
+    newTag: 0.2.0

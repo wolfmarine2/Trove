@@ -15,6 +15,9 @@ Trove 是一个自托管的通用制品仓库（私有源），设计上参照 S
 | PyPI | ✓ twine 上传（PEP 503 simple 索引） | ✓ 支持 JSON/HTML 索引，校验 sha256 | ✓ | pip、twine、uv |
 | Cargo | ✓ sparse 索引、publish、yank | ✓ crates.io，校验 checksum | ✓ | cargo 1.97 |
 | Raw | ✓ 任意文件 HTTP PUT | ✓ | ✓ | curl |
+| Docker / OCI | —（推送计划中） | ✓ Docker Hub、GHCR、Quay、Harbor 等，支持 token 鉴权，校验摘要 | ✓ | Registry API v2（docker、containerd） |
+| APT | — | ✓ Debian、Ubuntu、麒麟、统信 UOS，支持 by-hash | — | apt 2.7 |
+| YUM / DNF | — | ✓ openEuler、RHEL 系、Fedora、EPEL | — | 仓库目录布局（dnf） |
 
 ## 特点
 

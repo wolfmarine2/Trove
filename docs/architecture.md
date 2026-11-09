@@ -57,7 +57,35 @@
    rewritten to point at the repository the client asked, so clients never
    learn about members.
 4. Responses carry `ETag` (SHA-256), `Last-Modified` and
-   `X-Checksum-Sha1/Sha256/Md5`.
+   `X-Checksum-Sha1/Sha256/Md5`, honour `If-None-Match` / `If-Modified-Since`
+   and single byte ranges (resumable downloads).
+
+### Docker / OCI
+
+The Registry API is rooted at `/v2/`, separate from `/repository/`. The first
+segment of the image name selects the repository
+(`/v2/docker-hub/library/nginx/manifests/1.27`); names that do not start with
+a Docker repository go to the *default Docker repository* (System settings),
+so Trove also works as a plain `registry-mirrors` endpoint.
+
+* Manifests by tag are metadata (refreshed after max age, revalidated with
+  ETags); manifests by digest and blobs are immutable and verified against
+  their SHA-256 digest before they are cached.
+* Upstream bearer-token challenges (Docker Hub, GHCR, Quay, Harbor) are
+  answered automatically, using the proxy's credentials if set; tokens are
+  cached until expiry.
+* Single-segment Docker Hub names get the `library/` prefix upstream.
+* Layers are deduplicated across images and repositories: a layer already in
+  the blob store is linked instead of downloaded again.
+
+### APT and YUM
+
+Path-for-path proxies. Signed indexes (`InRelease`, `repomd.xml`) are
+metadata; index files whose names do not carry a checksum are tied to their
+signed index and refetched when it changes, which prevents "Hash Sum
+mismatch" errors. Packages and `by-hash` / checksum-named files are immutable.
+Signatures pass through untouched, so clients verify with the distribution's
+own keys.
 
 ## Security model
 
@@ -75,11 +103,11 @@
 
 ## Roadmap
 
-* Docker / OCI distribution (hosted, proxy, group)
+* Docker / OCI hosted repositories (push), blob mounting
+* Hosted APT (signed `InRelease`) and YUM (`createrepo`-style metadata)
 * Go module proxy, Helm, NuGet, RubyGems, Conda
 * Per-repository permissions and content selectors
 * LDAP and OIDC sign-in
 * Cleanup policies (age, last download, snapshot retention)
-* Range requests and resumable downloads
 * Background re-validation and pre-fetching for proxies
 * Replication between sites

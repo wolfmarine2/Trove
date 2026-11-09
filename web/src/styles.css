@@ -22,6 +22,9 @@
   --f-pypi: #2c5f92;
   --f-cargo: #7a4f14;
   --f-raw: #4b5563;
+  --f-docker: #0e6a86;
+  --f-apt: #77216f;
+  --f-yum: #2f6b35;
 
   --sans: "IBM Plex Sans", system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
@@ -398,6 +401,18 @@ select:focus-visible {
 .format-raw,
 .rule-raw {
   --fc: var(--f-raw);
+}
+.format-docker,
+.rule-docker {
+  --fc: var(--f-docker);
+}
+.format-apt,
+.rule-apt {
+  --fc: var(--f-apt);
+}
+.format-yum,
+.rule-yum {
+  --fc: var(--f-yum);
 }
 
 .kind {
@@ -960,6 +975,10 @@ select:focus-visible {
   margin-top: 2rem;
   padding-top: 1.5rem;
   border-top: 1px solid var(--line-strong);
+}
+
+.subsection select {
+  max-width: 320px;
 }
 
 .subsection h2 {

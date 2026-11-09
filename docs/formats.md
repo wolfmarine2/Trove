@@ -142,6 +142,80 @@ Proxy repositories should point at `https://index.crates.io/`. When anonymous
 read is off, `config.json` advertises `auth-required` and Cargo sends the
 token on every request.
 
+## Docker / OCI (pull-through cache)
+
+Create a Docker proxy per upstream registry and, optionally, a group:
+
+| Upstream | Remote URL |
+| -------- | ---------- |
+| Docker Hub | `https://registry-1.docker.io` |
+| GitHub Container Registry | `https://ghcr.io` |
+| Quay | `https://quay.io` |
+| Kubernetes images | `https://registry.k8s.io` |
+| Harbor / any v2 registry | `https://harbor.example.com` |
+
+Image names start with the repository name:
+
+```sh
+docker login trove.example.com            # only needed when anonymous read is off
+docker pull trove.example.com/docker-hub/library/nginx:1.27
+docker pull trove.example.com/docker-hub/nginx:1.27   # library/ is added for Docker Hub
+```
+
+containerd (Kubernetes nodes), `/etc/containerd/certs.d/docker.io/hosts.toml`:
+
+```toml
+server = "https://registry-1.docker.io"
+
+[host."https://trove.example.com/v2/docker-hub"]
+  capabilities = ["pull", "resolve"]
+  override_path = true
+```
+
+Docker daemon as a plain mirror: set the repository as **Default Docker
+repository** under System, then in `/etc/docker/daemon.json`:
+
+```json
+{ "registry-mirrors": ["https://trove.example.com"] }
+```
+
+Docker requires HTTPS; for a plain-HTTP test server add it to
+`insecure-registries`. Upstream credentials (Docker Hub account to avoid
+anonymous rate limits, private registries) go into the proxy's remote
+username/password. Pushing images is not supported yet.
+
+## APT (Debian, Ubuntu, Kylin, UOS)
+
+One proxy per upstream archive, e.g. `http://archive.ubuntu.com/ubuntu/`,
+`http://security.ubuntu.com/ubuntu/`, `http://deb.debian.org/debian/`.
+
+```text
+# /etc/apt/sources.list.d/ubuntu.list
+deb http://trove.example.com/repository/ubuntu/ noble main restricted universe multiverse
+deb http://trove.example.com/repository/ubuntu/ noble-updates main restricted universe multiverse
+```
+
+Release signatures are passed through, so keep the distribution keyring
+installed. `apt-get update` revalidates with `If-Modified-Since`.
+
+## YUM / DNF (openEuler, RHEL family, Fedora, EPEL)
+
+One proxy per repository directory, e.g.
+`https://repo.openeuler.org/openEuler-24.03-LTS/OS/x86_64/` or
+`https://repo.openeuler.org/openEuler-24.03-LTS/update/x86_64/`.
+
+```ini
+# /etc/yum.repos.d/openeuler-os.repo
+[openeuler-os]
+name=openEuler OS (via Trove)
+baseurl=http://trove.example.com/repository/openeuler-os/
+enabled=1
+gpgcheck=1
+gpgkey=http://trove.example.com/repository/openeuler-os/RPM-GPG-KEY-openEuler
+```
+
+Point `baseurl` at Trove instead of `metalink`/`mirrorlist`.
+
 ## Raw
 
 ```sh

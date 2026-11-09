@@ -16,6 +16,9 @@ box and scales out on PostgreSQL (or openGauss) with S3-compatible storage.
 | PyPI   | ✓ twine upload (PEP 503 simple index) | ✓ JSON and HTML indexes, hash-verified | ✓ | pip, twine, uv |
 | Cargo  | ✓ sparse index, publish, yank | ✓ crates.io, checksum-verified | ✓ | cargo 1.97 |
 | Raw    | ✓ any file over HTTP PUT | ✓ | ✓ | curl |
+| Docker / OCI | — (push planned) | ✓ Docker Hub, GHCR, Quay, Harbor…, token auth, digest-verified | ✓ | Registry API v2 (docker, containerd) |
+| APT    | — | ✓ Debian, Ubuntu, Kylin, UOS; by-hash aware | — | apt 2.7 |
+| YUM / DNF | — | ✓ openEuler, RHEL family, Fedora, EPEL | — | Registry layout (dnf) |
 
 ## Why
 
@@ -78,9 +81,10 @@ docs/             documentation
 
 ## Status
 
-Trove 0.1 covers the day-to-day workflows of the five formats above. Docker /
-OCI images, Go modules, Helm charts, per-repository permissions, LDAP/OIDC and
-cleanup policies are on the [roadmap](docs/architecture.md#roadmap).
+Trove 0.2 covers the day-to-day workflows of the formats above. Docker image
+push (hosted), hosted APT/YUM, Go modules, Helm charts, per-repository
+permissions, LDAP/OIDC and cleanup policies are on the
+[roadmap](docs/architecture.md#roadmap).
 
 ## License
 

@@ -73,7 +73,9 @@ sizes, blob totals).
 ## Reverse proxy
 
 Set `server.base_url` to the public URL. Disable request buffering and body
-size limits for `/repository/`; artifacts can be gigabytes. Forward
+size limits for `/repository/` and `/v2/`; artifacts and image layers can be
+gigabytes. Docker clients require HTTPS (or an `insecure-registries` entry), so
+terminate TLS in front of Trove when serving Docker repositories. Forward
 `X-Forwarded-Proto` so session cookies get the `Secure` flag.
 
 ## Backup and restore

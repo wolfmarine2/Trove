@@ -232,6 +232,23 @@ impl Db {
         rows.iter().map(|r| r.try_get::<String, _>(0).map_err(Error::from)).collect()
     }
 
+    pub async fn get_blob(&self, sha256: &str) -> Result<Option<BlobInfo>> {
+        let row = sqlx::query("SELECT sha256, sha1, md5, sha512, size FROM blobs WHERE sha256 = $1")
+            .bind(sha256)
+            .fetch_optional(&self.pool)
+            .await?;
+        row.map(|r| {
+            Ok(BlobInfo {
+                sha256: r.try_get("sha256")?,
+                sha1: r.try_get("sha1")?,
+                md5: r.try_get("md5")?,
+                sha512: r.try_get("sha512")?,
+                size: r.try_get("size")?,
+            })
+        })
+        .transpose()
+    }
+
     pub async fn blob_size(&self, sha256: &str) -> Result<Option<i64>> {
         let row =
             sqlx::query("SELECT size FROM blobs WHERE sha256 = $1").bind(sha256).fetch_optional(&self.pool).await?;
@@ -310,7 +327,8 @@ impl Db {
                 content_type = excluded.content_type,
                 uploader = excluded.uploader,
                 attributes = excluded.attributes,
-                updated_at = excluded.updated_at",
+                updated_at = CASE WHEN assets.blob_sha256 = excluded.blob_sha256
+                                  THEN assets.updated_at ELSE excluded.updated_at END",
         )
         .bind(new_id())
         .bind(a.repo_id)

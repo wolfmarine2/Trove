@@ -31,6 +31,19 @@ export function relativeTime(ms: number | null | undefined, lang: string): strin
   return formatTime(ms, lang);
 }
 
+/** Address users type: Docker images live under host/repo, others under the repository URL. */
+export function displayUrl(repo: Repository): string {
+  if (repo.format === "docker") return `${repo.url.replace(/^https?:\/\//, "").replace("/repository/", "/")}/`;
+  return `${repo.url}/`;
+}
+
+function suiteHint(remote: string | undefined): string {
+  if (!remote) return "<suite>";
+  if (remote.includes("ubuntu")) return "noble";
+  if (remote.includes("debian")) return "bookworm";
+  return "<suite>";
+}
+
 export interface Snippet {
   file: string;
   code: string;
@@ -147,6 +160,55 @@ registry = "${index}"`,
       if (canPublish) out.push({ file: "shell", code: `cargo publish --registry ${repo.name}` });
       return out;
     }
+    case "docker": {
+      const origin = url.replace(/\/repository\/.*$/, "");
+      const registry = origin.replace(/^https?:\/\//, "");
+      const isHub = (repo.config.proxy?.remote_url ?? "").includes("docker.io") || repo.kind === "group";
+      const image = isHub ? "library/nginx:1.27" : "<image>:<tag>";
+      const out: Snippet[] = [
+        { file: "shell", code: `docker login ${registry}\ndocker pull ${registry}/${repo.name}/${image}` },
+        {
+          file: "/etc/containerd/certs.d/docker.io/hosts.toml",
+          code: `server = "https://registry-1.docker.io"
+
+[host."${origin}/v2/${repo.name}"]
+  capabilities = ["pull", "resolve"]
+  override_path = true`,
+        },
+        {
+          file: "/etc/docker/daemon.json",
+          code: `{
+  "registry-mirrors": ["${origin}"]${origin.startsWith("http://") ? `,\n  "insecure-registries": ["${registry}"]` : ""}
+}`,
+        },
+        { file: "deployment.yaml", code: `image: ${registry}/${repo.name}/${image}` },
+      ];
+      return out;
+    }
+    case "apt":
+      return [
+        { file: "/etc/apt/sources.list.d/trove.list", code: `deb ${url}/ ${suiteHint(repo.config.proxy?.remote_url)} main` },
+        {
+          file: "/etc/apt/sources.list.d/trove.sources",
+          code: `Types: deb
+URIs: ${url}/
+Suites: ${suiteHint(repo.config.proxy?.remote_url)}
+Components: main
+Signed-By: /usr/share/keyrings/<distribution>-archive-keyring.gpg`,
+        },
+      ];
+    case "yum":
+      return [
+        {
+          file: `/etc/yum.repos.d/${repo.name}.repo`,
+          code: `[${repo.name}]
+name=${repo.name} (via Trove)
+baseurl=${url}/
+enabled=1
+gpgcheck=1`,
+        },
+        { file: "shell", code: `dnf clean all && dnf makecache --repo ${repo.name}` },
+      ];
     case "raw":
     default:
       return [
