@@ -1,10 +1,9 @@
-# Builds and publishes the multi-arch container image on GitHub.
+# Builds and publishes the multi-arch container image on GitHub, by version.
+# Images are only published for release tags, so every image tag is a version:
 #
-#   push to main           → ghcr.io/<owner>/trove:edge, :sha-<short>
-#   push tag vX.Y.Z        → :X.Y.Z, :X.Y, :latest, :sha-<short> + GitHub Release
-#   Run workflow (Actions) → like main; with "release" ticked it publishes the
-#                            version from Cargo.toml as :X.Y.Z, :X.Y, :latest
-#                            and creates the vX.Y.Z tag and GitHub Release
+#   push tag vX.Y.Z        → ghcr.io/<owner>/trove:X.Y.Z, :X.Y, :latest + GitHub Release
+#   Run workflow (Actions) → releases the version in Cargo.toml the same way and
+#                            creates the vX.Y.Z tag once the image is published
 #
 # amd64 and arm64 are built natively on separate runners (no QEMU: compiling
 # Rust under emulation takes hours) and merged into one manifest.
@@ -12,22 +11,12 @@ name: Container image
 
 on:
   push:
-    branches: [main]
     tags: ["v*"]
-    paths-ignore:
-      - "docs/**"
-      - "**/*.md"
-      - ".github/ISSUE_TEMPLATE/**"
   workflow_dispatch:
-    inputs:
-      release:
-        description: "Publish a release: version tags, latest, git tag and GitHub Release"
-        type: boolean
-        default: false
 
 concurrency:
-  group: image-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref == 'refs/heads/main' }}
+  group: release
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -42,7 +31,6 @@ jobs:
     outputs:
       version: ${{ steps.v.outputs.version }}
       minor: ${{ steps.v.outputs.minor }}
-      release: ${{ steps.v.outputs.release }}
     steps:
       - uses: actions/checkout@v5
       - id: v
@@ -54,19 +42,14 @@ jobs:
             if [[ "$tag" != "$version" ]]; then
               echo "::error::tag v$tag does not match Cargo.toml version $version"; exit 1
             fi
-            release=true
-          elif [[ "${{ inputs.release }}" == "true" ]]; then
-            if git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null; then
-              echo "::error::v$version already exists; bump the version in Cargo.toml first"; exit 1
-            fi
-            release=true
-          else
-            release=false
+          elif [[ "$GITHUB_REF" != refs/heads/main ]]; then
+            echo "::error::run the release from main (got $GITHUB_REF)"; exit 1
+          elif git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null; then
+            echo "::error::v$version is already released; bump the version in Cargo.toml first"; exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "minor=${version%.*}" >> "$GITHUB_OUTPUT"
-          echo "release=$release" >> "$GITHUB_OUTPUT"
-          echo "Version $version, release=$release" >> "$GITHUB_STEP_SUMMARY"
+          echo "Releasing version $version" >> "$GITHUB_STEP_SUMMARY"
 
   build:
     needs: prepare
@@ -138,12 +121,11 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.IMAGE }}
+          flavor: latest=false
           tags: |
-            type=raw,value=${{ needs.prepare.outputs.version }},enable=${{ needs.prepare.outputs.release == 'true' }}
-            type=raw,value=${{ needs.prepare.outputs.minor }},enable=${{ needs.prepare.outputs.release == 'true' }}
-            type=raw,value=latest,enable=${{ needs.prepare.outputs.release == 'true' }}
-            type=edge,branch=main
-            type=sha
+            type=raw,value=${{ needs.prepare.outputs.version }}
+            type=raw,value=${{ needs.prepare.outputs.minor }}
+            type=raw,value=latest
       - name: Create multi-arch manifest
         working-directory: /tmp/digests
         run: |
@@ -159,7 +141,6 @@ jobs:
 
   github-release:
     needs: [prepare, manifest]
-    if: needs.prepare.outputs.release == 'true'
     runs-on: ubuntu-24.04
     permissions:
       contents: write

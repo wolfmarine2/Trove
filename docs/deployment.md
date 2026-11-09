@@ -96,19 +96,28 @@ the build arguments above, caches layers in Harbor and pushes the image.
 
 `.github/workflows/release.yml` builds the image with GitHub Actions, natively
 on amd64 and arm64 runners, and publishes one multi-arch manifest to
-`ghcr.io/<owner>/trove`:
+`ghcr.io/<owner>/trove`. Images are published **only for releases**, so every
+tag is a version you can pin:
 
-| Trigger | Published tags |
-| ------- | -------------- |
-| Push to `main` | `edge`, `sha-<commit>` |
-| **Actions → Container image → Run workflow** with *release* ticked | `X.Y.Z` (from `Cargo.toml`), `X.Y`, `latest`, `sha-<commit>`; also creates the `vX.Y.Z` tag and a GitHub Release with the CHANGELOG notes |
-| Push of a `vX.Y.Z` tag | same as a release |
+| Image tag | Meaning |
+| --------- | ------- |
+| `0.3.0` | exact release (recommended for deployments) |
+| `0.3` | newest patch release of 0.3 |
+| `latest` | newest release |
 
-To release: bump `version` in `Cargo.toml` (and the CHANGELOG), merge to
-`main`, then run the workflow with *release* ticked. New GHCR packages are
-private; set the package visibility to public once so anyone can pull.
-CI additionally builds the image on every push and smoke-tests it (health,
-UI, non-root user).
+Two ways to release version `X.Y.Z` (bump `version` in `Cargo.toml` and the
+CHANGELOG on `main` first):
+
+* push a tag: `git tag -a vX.Y.Z -m "Trove X.Y.Z" && git push origin vX.Y.Z`
+* or **Actions → Container image → Run workflow** on `main`: it releases the
+  version in `Cargo.toml` and creates the `vX.Y.Z` tag after the image is
+  published
+
+Either way a GitHub Release with the CHANGELOG notes is created. A tag must
+match `Cargo.toml`, and an existing version is never overwritten. New GHCR
+packages are private; set the package visibility to public once so anyone can
+pull. Pushes to `main` only run CI, which builds and smoke-tests the image
+without publishing it.
 
 ### Running
 
