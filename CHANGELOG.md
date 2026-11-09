@@ -6,7 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-09
+
 ### Added
+- Per-repository outbound proxy for proxy repositories: server default,
+  direct, or a custom HTTP, HTTPS, SOCKS5 or SOCKS5h proxy with credentials
+  and a bypass list. Docker token requests follow the same route.
+- `http_client.proxy` accepts SOCKS5 URLs; new `http_client.no_proxy`.
+- "Test connection" for remotes (`POST /api/v1/remote-test`), also in the
+  repository form.
 - Container build reworked for air-gapped pipelines: `Dockerfile` at the
   root, portable across Docker, Podman/Buildah and Kaniko, every base image
   and package source configurable (`BASE_REGISTRY`, `NPM_REGISTRY`,
@@ -17,25 +25,15 @@ All notable changes to this project are documented here. The format follows
   CI smoke-tests the image.
 - Argo Workflows + Kaniko template (`deploy/ci/argo-kaniko-build.yaml`).
 
-### Fixed
-- The image no longer fails to start without a mounted configuration file.
-- Minimum supported Rust version corrected to 1.94.
-
 ### Changed
 - Positioned as an internal public mirror: anonymous read stays on by default
   (now also in the production Kustomize overlay), and the generated client
   configuration omits credentials for downloads, showing tokens only for
   publishing or when anonymous read is off.
 
-## [0.3.0] - 2026-11-09
-
-### Added
-- Per-repository outbound proxy for proxy repositories: server default,
-  direct, or a custom HTTP, HTTPS, SOCKS5 or SOCKS5h proxy with credentials
-  and a bypass list. Docker token requests follow the same route.
-- `http_client.proxy` accepts SOCKS5 URLs; new `http_client.no_proxy`.
-- "Test connection" for remotes (`POST /api/v1/remote-test`), also in the
-  repository form.
+### Fixed
+- The image no longer fails to start without a mounted configuration file.
+- Minimum supported Rust version corrected to 1.94.
 
 ## [0.2.0] - 2026-11-09
 
@@ -71,3 +69,6 @@ All notable changes to this project are documented here. The format follows
   setup snippets, browsing with checksums, search, tokens, users, audit, system.
 - Prometheus metrics, health and readiness endpoints, JSON logging.
 - Dockerfile (amd64/arm64), docker-compose, Kustomize base and HA overlay.
+
+[Unreleased]: https://github.com/wolfmarine2/Trove/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/wolfmarine2/Trove/releases/tag/v0.3.0
