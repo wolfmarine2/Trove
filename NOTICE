@@ -1,0 +1,7 @@
+Trove
+Copyright 2026 The Trove Authors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+It bundles the IBM Plex fonts, licensed under the SIL Open Font License 1.1.
+Third-party Rust crates and npm packages are used under their respective
+licenses, listed in Cargo.lock and web/package-lock.json.

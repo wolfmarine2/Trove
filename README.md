@@ -1,5 +1,10 @@
 # Trove
 
+[![CI](https://github.com/wolfmarine2/Trove/actions/workflows/ci.yml/badge.svg)](https://github.com/wolfmarine2/Trove/actions/workflows/ci.yml)
+[![License](https://img.shields.io/github/license/wolfmarine2/Trove)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/wolfmarine2/Trove?sort=semver)](https://github.com/wolfmarine2/Trove/releases)
+[![Container](https://img.shields.io/badge/ghcr.io-wolfmarine2%2Ftrove-blue)](https://github.com/wolfmarine2/Trove/pkgs/container/trove)
+
 [中文说明](README.zh-CN.md)
 
 Trove is a self-hosted universal artifact repository, in the spirit of Sonatype
@@ -93,6 +98,17 @@ push (hosted), hosted APT/YUM, Go modules, Helm charts, per-repository
 permissions, LDAP/OIDC and cleanup policies are on the
 [roadmap](docs/architecture.md#roadmap).
 
+## Community
+
+* Questions, ideas and show-and-tell: [GitHub Discussions](https://github.com/wolfmarine2/Trove/discussions)
+* Bugs and feature requests: [issues](https://github.com/wolfmarine2/Trove/issues/new/choose)
+* Security vulnerabilities: report privately, see [SECURITY.md](SECURITY.md)
+
+Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) and the
+[code of conduct](CODE_OF_CONDUCT.md); good first areas are new package
+formats, client snippets and documentation. Changes are listed in
+[CHANGELOG.md](CHANGELOG.md).
+
 ## License
 
-Apache License 2.0. See [LICENSE](LICENSE).
+Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).

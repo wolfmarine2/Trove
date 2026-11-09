@@ -1,6 +1,15 @@
 # Contributing to Trove
 
-Thanks for helping! Issues and pull requests are welcome.
+Thanks for helping! Issues and pull requests are welcome, in English or
+Chinese. By participating you agree to follow the
+[code of conduct](CODE_OF_CONDUCT.md).
+
+Larger changes (a new package format, storage backend or API change) are
+easiest to land when discussed in an issue or discussion first.
+
+Contributions are accepted under the project's Apache-2.0 license
+(inbound = outbound): by submitting a pull request you confirm that you have
+the right to license your contribution under it.
 
 ## Development setup
 

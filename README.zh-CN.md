@@ -1,5 +1,10 @@
 # Trove
 
+[![CI](https://github.com/wolfmarine2/Trove/actions/workflows/ci.yml/badge.svg)](https://github.com/wolfmarine2/Trove/actions/workflows/ci.yml)
+[![License](https://img.shields.io/github/license/wolfmarine2/Trove)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/wolfmarine2/Trove?sort=semver)](https://github.com/wolfmarine2/Trove/releases)
+[![Container](https://img.shields.io/badge/ghcr.io-wolfmarine2%2Ftrove-blue)](https://github.com/wolfmarine2/Trove/pkgs/container/trove)
+
 [English](README.md)
 
 Trove 是一个自托管的通用制品仓库，设计上参照 Sonatype Nexus Repository，定位是
@@ -80,6 +85,15 @@ config/           配置示例
 docs/             文档
 ```
 
+## 社区
+
+* 提问、想法与使用经验：[GitHub Discussions](https://github.com/wolfmarine2/Trove/discussions)
+* 缺陷与功能建议：[Issues](https://github.com/wolfmarine2/Trove/issues/new/choose)
+* 安全漏洞：请私下报告，见 [SECURITY.md](SECURITY.md)
+
+欢迎参与贡献，请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md) 和[行为准则](CODE_OF_CONDUCT.md)。
+新的包格式、客户端配置片段和文档都是很好的切入点。版本变更见 [CHANGELOG.md](CHANGELOG.md)。
+
 ## 许可证
 
-Apache License 2.0，见 [LICENSE](LICENSE)。
+Apache License 2.0，见 [LICENSE](LICENSE) 与 [NOTICE](NOTICE)。
