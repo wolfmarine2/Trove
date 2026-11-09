@@ -3,8 +3,14 @@
 [中文说明](README.zh-CN.md)
 
 Trove is a self-hosted universal artifact repository, in the spirit of Sonatype
-Nexus Repository: one server that hosts your private packages, caches public
-registries and combines both behind a single URL per ecosystem.
+Nexus Repository, built to be a company's **internal public mirror**: one
+server that caches public registries (Maven Central, npm, PyPI, crates.io,
+Docker Hub, Ubuntu, openEuler, …), hosts in-house packages and combines both
+behind a single URL per ecosystem.
+
+Downloads need no account by default, so build machines, CI runners and
+developers just point their tools at Trove. Publishing and administration
+require a user; anonymous read can be switched off for stricter setups.
 
 It is a single Rust binary with an embedded React UI, runs on SQLite out of the
 box and scales out on PostgreSQL (or openGauss) with S3-compatible storage.

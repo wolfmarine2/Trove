@@ -73,7 +73,15 @@ checks the remote through the selected route without saving.
 Settings that can change without a restart are stored in the database and
 edited under **System** in the UI or via `PUT /api/v1/system/settings`:
 
-* `anonymous_read` — allow downloads without signing in.
+* `anonymous_read` (default **on**) — anyone who can reach Trove may browse,
+  search and download from every repository, including `docker pull`, without
+  an account. Publishing, deleting and administration always require a user
+  with the right role. When off, every read needs credentials and Cargo's
+  `config.json` advertises `auth-required`.
+* `docker_default_repository` — see [client setup](formats.md).
+
+The configuration value `security.anonymous_read` only seeds this setting on
+first start; afterwards the value stored in the database wins.
 
 ## Administration commands
 

@@ -95,7 +95,9 @@ function RepoFacts({ repo }: { repo: Repository }) {
 
 function Setup({ repo }: { repo: Repository }) {
   const { t } = useI18n();
-  const snippets = clientSnippets(repo);
+  const { anonymousRead } = useSession();
+  const snippets = clientSnippets(repo, anonymousRead);
+  const needsToken = snippets.some((s) => s.code.includes("<TOKEN>"));
   return (
     <div className="setup">
       {snippets.map((s, i) => (
@@ -107,7 +109,8 @@ function Setup({ repo }: { repo: Repository }) {
         </p>
       )}
       {(repo.format === "apt" || repo.format === "yum") && <p className="help">{t("repo.osNote")}</p>}
-      {!["apt", "yum", "docker"].includes(repo.format) && <p className="help">{t("repo.tokenNote")}</p>}
+      {needsToken && <p className="help">{t(anonymousRead ? "repo.tokenNotePublish" : "repo.tokenNote")}</p>}
+      {anonymousRead && !needsToken && <p className="help">{t("repo.anonymousNote")}</p>}
     </div>
   );
 }

@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- Positioned as an internal public mirror: anonymous read stays on by default
+  (now also in the production Kustomize overlay), and the generated client
+  configuration omits credentials for downloads, showing tokens only for
+  publishing or when anonymous read is off.
+
 ## [0.3.0] - 2026-11-09
 
 ### Added

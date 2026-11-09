@@ -14,7 +14,9 @@ allow_http = true
 path_style = true
 
 [security]
-anonymous_read = false
+# Internal public mirror: anyone on the network can download; publishing and
+# administration still require a user. Set to false to require sign-in for reads.
+anonymous_read = true
 
 [log]
 level = "info"

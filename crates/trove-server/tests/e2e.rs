@@ -895,3 +895,43 @@ async fn per_repository_outbound_proxies() {
         .unwrap();
     assert_eq!(invalid.status(), StatusCode::BAD_REQUEST);
 }
+
+#[tokio::test]
+async fn fresh_install_is_an_anonymous_public_mirror() {
+    let s = Server::start().await;
+    s.create_repo(json!({"name": "files", "format": "raw", "kind": "hosted"})).await;
+    s.create_repo(json!({"name": "crates", "format": "cargo", "kind": "hosted"})).await;
+    s.admin(reqwest::Method::PUT, "/repository/files/tool.tar.gz").body("tool").send().await.unwrap();
+
+    // Everything readable without credentials.
+    let anon = |path: &str| s.client.get(s.url(path)).send();
+    assert_eq!(anon("/api/v1/status").await.unwrap().json::<Value>().await.unwrap()["anonymous_read"], true);
+    for path in [
+        "/repository/files/tool.tar.gz",
+        "/api/v1/repositories",
+        "/api/v1/repositories/files/browse?path=",
+        "/api/v1/assets?q=tool",
+        "/api/v1/stats",
+        "/v2/",
+    ] {
+        assert_eq!(anon(path).await.unwrap().status(), StatusCode::OK, "{path}");
+    }
+    let cfg: Value = anon("/repository/crates/index/config.json").await.unwrap().json().await.unwrap();
+    assert_eq!(cfg["auth-required"], false);
+
+    // Writes and administration still need a user.
+    let put = s.client.put(s.url("/repository/files/x")).body("x").send().await.unwrap();
+    assert_eq!(put.status(), StatusCode::UNAUTHORIZED);
+    let del = s.client.delete(s.url("/repository/files/tool.tar.gz")).send().await.unwrap();
+    assert_eq!(del.status(), StatusCode::UNAUTHORIZED);
+    let create = s
+        .client
+        .post(s.url("/api/v1/repositories"))
+        .json(&json!({"name": "x", "format": "raw", "kind": "hosted"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(anon("/api/v1/users").await.unwrap().status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(anon("/api/v1/system/audit").await.unwrap().status(), StatusCode::UNAUTHORIZED);
+}

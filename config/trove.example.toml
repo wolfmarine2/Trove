@@ -44,7 +44,10 @@ path_style = true      # MinIO and Ceph usually need path-style addressing
 # Password of the bootstrap "admin" user, used only on first start. Empty:
 # a random password is written to <data_dir>/admin.password.
 initial_admin_password = ""
-# Initial value of the anonymous-read setting (changeable in the UI).
+# Anonymous read: anyone who can reach Trove may browse and download from
+# every repository (the usual setup for an internal mirror). Publishing and
+# administration always require a user. This is the initial value; it can be
+# changed later under System in the UI.
 anonymous_read = true
 # Web UI session lifetime.
 session_ttl_hours = 12

@@ -1,9 +1,13 @@
 # Client setup
 
 The **Set up client** tab of each repository in the UI generates these
-snippets with the correct URL. Below, `trove.example.com` is your server and
-`<TOKEN>` an access token created under **Access tokens** (tokens work wherever
-a password is accepted).
+snippets with the correct URL. Below, `trove.example.com` is your server.
+
+Downloads need no credentials while anonymous read is on (the default). The
+`<server>`, `_authToken`, `username`/`password` entries below are only needed
+for **publishing** to hosted repositories, or for reads when anonymous read
+has been switched off. `<TOKEN>` is an access token created under **Access
+tokens**; tokens work wherever a password is accepted.
 
 ## Maven
 

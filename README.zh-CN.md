@@ -2,8 +2,13 @@
 
 [English](README.md)
 
-Trove 是一个自托管的通用制品仓库（私有源），设计上参照 Sonatype Nexus Repository：
-一台服务同时托管内部发布的包、缓存公共源，并按生态把两者聚合到同一个地址。
+Trove 是一个自托管的通用制品仓库，设计上参照 Sonatype Nexus Repository，定位是
+**企业内部的公开源（镜像站）**：一台服务代理并缓存各个公共源（Maven Central、npm、PyPI、
+crates.io、Docker Hub、Ubuntu、openEuler 等），同时托管内部发布的包，并按生态把两者
+聚合到同一个地址。
+
+默认无需账号即可下载，构建机、CI 和开发者只要把工具指向 Trove 即可。发布和管理操作需要
+登录；对安全要求更高的环境可以关闭匿名读取。
 
 整个系统是一个 Rust 单二进制文件，内嵌 React 管理界面。默认使用 SQLite 即可运行，
 需要高可用时切换到 PostgreSQL（兼容 openGauss）和 S3 兼容对象存储（MinIO、Ceph RGW）。

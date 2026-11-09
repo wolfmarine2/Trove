@@ -49,24 +49,34 @@ export interface Snippet {
   code: string;
 }
 
-/** Client configuration for a repository, generated from its format and type. */
-export function clientSnippets(repo: Repository): Snippet[] {
+/**
+ * Client configuration for a repository, generated from its format and type.
+ * Reads need credentials only when anonymous read is switched off; publishing
+ * to hosted repositories always does.
+ */
+export function clientSnippets(repo: Repository, anonymousRead: boolean): Snippet[] {
   const url = repo.url;
   const host = url.replace(/^https?:\/\//, "");
   const canPublish = repo.kind === "hosted";
+  const readAuth = !anonymousRead;
   switch (repo.format) {
     case "maven": {
+      const servers = readAuth || canPublish;
       const out: Snippet[] = [
         {
           file: "~/.m2/settings.xml",
-          code: `<settings>
+          code: `<settings>${
+            servers
+              ? `
   <servers>
     <server>
       <id>${repo.name}</id>
       <username>your-user</username>
       <password><TOKEN></password>
     </server>
-  </servers>
+  </servers>`
+              : ""
+          }
   <mirrors>
     <mirror>
       <id>${repo.name}</id>
@@ -77,65 +87,67 @@ export function clientSnippets(repo: Repository): Snippet[] {
 </settings>`,
         },
       ];
-      if (canPublish)
+      if (canPublish) {
+        const tag = repo.config.version_policy === "snapshot" ? "snapshotRepository" : "repository";
         out.push({
           file: "pom.xml",
           code: `<distributionManagement>
-  <${repo.config.version_policy === "snapshot" ? "snapshotRepository" : "repository"}>
+  <${tag}>
     <id>${repo.name}</id>
     <url>${url}/</url>
-  </${repo.config.version_policy === "snapshot" ? "snapshotRepository" : "repository"}>
+  </${tag}>
 </distributionManagement>`,
         });
+      }
       out.push({
         file: "build.gradle.kts",
-        code: `repositories {
+        code: readAuth
+          ? `repositories {
     maven {
         url = uri("${url}/")
         credentials { username = "your-user"; password = "<TOKEN>" }
     }
+}`
+          : `repositories {
+    maven { url = uri("${url}/") }
 }`,
       });
       return out;
     }
     case "npm":
-      return canPublish
-        ? [
-            {
-              file: ".npmrc",
-              code: `@your-scope:registry=${url}/
-//${host}/:_authToken=<TOKEN>`,
-            },
-            { file: "shell", code: `npm publish --registry ${url}/` },
-          ]
-        : [
-            {
-              file: ".npmrc",
-              code: `registry=${url}/
-//${host}/:_authToken=<TOKEN>`,
-            },
-            { file: "shell", code: `npm install --registry ${url}/` },
-          ];
-    case "pypi":
-      return canPublish
-        ? [
-            {
-              file: "~/.pypirc",
-              code: `[distutils]
+      if (canPublish)
+        return [
+          { file: ".npmrc", code: `@your-scope:registry=${url}/\n//${host}/:_authToken=<TOKEN>` },
+          { file: "shell", code: `npm publish --registry ${url}/` },
+        ];
+      return [
+        { file: ".npmrc", code: readAuth ? `registry=${url}/\n//${host}/:_authToken=<TOKEN>` : `registry=${url}/` },
+        { file: "shell", code: `npm config set registry ${url}/\npnpm config set registry ${url}/\nyarn config set npmRegistryServer ${url}/` },
+      ];
+    case "pypi": {
+      const index = readAuth
+        ? `${url.replace("://", "://your-user:<TOKEN>@")}/simple/`
+        : `${url}/simple/`;
+      const install: Snippet[] = [
+        { file: "pip.conf", code: `[global]\nindex-url = ${index}${url.startsWith("http://") ? `\ntrusted-host = ${host.split("/")[0]}` : ""}` },
+        { file: "shell", code: `pip install --index-url ${index} requests\nuv pip install --index-url ${index} requests` },
+      ];
+      if (!canPublish) return install;
+      return [
+        {
+          file: "~/.pypirc",
+          code: `[distutils]
 index-servers = ${repo.name}
 
 [${repo.name}]
 repository = ${url}/
 username = __token__
 password = <TOKEN>`,
-            },
-            { file: "shell", code: `twine upload --repository ${repo.name} dist/*` },
-            { file: "pip.conf", code: `[global]\nindex-url = ${url}/simple/` },
-          ]
-        : [
-            { file: "pip.conf", code: `[global]\nindex-url = ${url}/simple/` },
-            { file: "shell", code: `pip install --index-url ${url}/simple/ requests\nuv pip install --index-url ${url}/simple/ requests` },
-          ];
+        },
+        { file: "shell", code: `twine upload --repository ${repo.name} dist/*` },
+        ...install,
+      ];
+    }
     case "cargo": {
       const index = `sparse+${url}/index/`;
       const out: Snippet[] = [
@@ -155,8 +167,8 @@ replace-with = "${repo.name}"
 [source.${repo.name}]
 registry = "${index}"`,
         },
-        { file: "shell", code: `cargo login --registry ${repo.name} <TOKEN>` },
       ];
+      if (canPublish || readAuth) out.push({ file: "shell", code: `cargo login --registry ${repo.name} <TOKEN>` });
       if (canPublish) out.push({ file: "shell", code: `cargo publish --registry ${repo.name}` });
       return out;
     }
@@ -165,8 +177,8 @@ registry = "${index}"`,
       const registry = origin.replace(/^https?:\/\//, "");
       const isHub = (repo.config.proxy?.remote_url ?? "").includes("docker.io") || repo.kind === "group";
       const image = isHub ? "library/nginx:1.27" : "<image>:<tag>";
-      const out: Snippet[] = [
-        { file: "shell", code: `docker login ${registry}\ndocker pull ${registry}/${repo.name}/${image}` },
+      return [
+        { file: "shell", code: `${readAuth ? `docker login ${registry}\n` : ""}docker pull ${registry}/${repo.name}/${image}` },
         {
           file: "/etc/containerd/certs.d/docker.io/hosts.toml",
           code: `server = "https://registry-1.docker.io"
@@ -183,20 +195,21 @@ registry = "${index}"`,
         },
         { file: "deployment.yaml", code: `image: ${registry}/${repo.name}/${image}` },
       ];
-      return out;
     }
-    case "apt":
+    case "apt": {
+      const base = readAuth ? `${url.replace("://", "://your-user:<TOKEN>@")}` : url;
       return [
-        { file: "/etc/apt/sources.list.d/trove.list", code: `deb ${url}/ ${suiteHint(repo.config.proxy?.remote_url)} main` },
+        { file: "/etc/apt/sources.list.d/trove.list", code: `deb ${base}/ ${suiteHint(repo.config.proxy?.remote_url)} main` },
         {
           file: "/etc/apt/sources.list.d/trove.sources",
           code: `Types: deb
-URIs: ${url}/
+URIs: ${base}/
 Suites: ${suiteHint(repo.config.proxy?.remote_url)}
 Components: main
 Signed-By: /usr/share/keyrings/<distribution>-archive-keyring.gpg`,
         },
       ];
+    }
     case "yum":
       return [
         {
@@ -205,20 +218,19 @@ Signed-By: /usr/share/keyrings/<distribution>-archive-keyring.gpg`,
 name=${repo.name} (via Trove)
 baseurl=${url}/
 enabled=1
-gpgcheck=1`,
+gpgcheck=1${readAuth ? "\nusername=your-user\npassword=<TOKEN>" : ""}`,
         },
         { file: "shell", code: `dnf clean all && dnf makecache --repo ${repo.name}` },
       ];
     case "raw":
-    default:
+    default: {
+      const download = `curl -O ${readAuth ? "-u your-user:<TOKEN> " : ""}${url}/${canPublish ? "releases/app.tar.gz" : "path/to/file"}`;
       return [
         {
           file: "shell",
-          code: canPublish
-            ? `curl -u your-user:<TOKEN> --upload-file ./app.tar.gz ${url}/releases/app.tar.gz
-curl -O ${url}/releases/app.tar.gz`
-            : `curl -O ${url}/path/to/file`,
+          code: canPublish ? `curl -u your-user:<TOKEN> --upload-file ./app.tar.gz ${url}/releases/app.tar.gz\n${download}` : download,
         },
       ];
+    }
   }
 }

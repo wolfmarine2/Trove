@@ -258,6 +258,8 @@ mod tests {
     #[test]
     fn defaults_are_sane() {
         let cfg = Config::default();
+        // Trove is an internal public mirror: reads are anonymous unless turned off.
+        assert!(cfg.security.anonymous_read);
         assert!(cfg.database_url().starts_with("sqlite://"));
         assert_eq!(cfg.storage_path(), PathBuf::from("data/blobs"));
     }
