@@ -92,12 +92,23 @@ the server stage on an older base.
 repository from Forgejo, builds natively per architecture with Kaniko using
 the build arguments above, caches layers in Harbor and pushes the image.
 
-### GitHub releases
+### Images built on GitHub
 
-Pushing a `v*` tag runs `.github/workflows/release.yml`: native amd64 and
-arm64 builds, merged into a multi-arch `ghcr.io/<owner>/trove` manifest
-(`latest`, `X.Y.Z`, `X.Y`). CI builds the image on every push and smoke-tests
-it (health, UI, non-root user).
+`.github/workflows/release.yml` builds the image with GitHub Actions, natively
+on amd64 and arm64 runners, and publishes one multi-arch manifest to
+`ghcr.io/<owner>/trove`:
+
+| Trigger | Published tags |
+| ------- | -------------- |
+| Push to `main` | `edge`, `sha-<commit>` |
+| **Actions → Container image → Run workflow** with *release* ticked | `X.Y.Z` (from `Cargo.toml`), `X.Y`, `latest`, `sha-<commit>`; also creates the `vX.Y.Z` tag and a GitHub Release with the CHANGELOG notes |
+| Push of a `vX.Y.Z` tag | same as a release |
+
+To release: bump `version` in `Cargo.toml` (and the CHANGELOG), merge to
+`main`, then run the workflow with *release* ticked. New GHCR packages are
+private; set the package visibility to public once so anyone can pull.
+CI additionally builds the image on every push and smoke-tests it (health,
+UI, non-root user).
 
 ### Running
 

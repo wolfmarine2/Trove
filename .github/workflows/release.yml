@@ -1,12 +1,33 @@
-# Builds the multi-arch image natively on amd64 and arm64 runners (no QEMU:
-# compiling Rust under emulation takes hours) and publishes it to GHCR when a
-# version tag is pushed.
-name: Release image
+# Builds and publishes the multi-arch container image on GitHub.
+#
+#   push to main           → ghcr.io/<owner>/trove:edge, :sha-<short>
+#   push tag vX.Y.Z        → :X.Y.Z, :X.Y, :latest, :sha-<short> + GitHub Release
+#   Run workflow (Actions) → like main; with "release" ticked it publishes the
+#                            version from Cargo.toml as :X.Y.Z, :X.Y, :latest
+#                            and creates the vX.Y.Z tag and GitHub Release
+#
+# amd64 and arm64 are built natively on separate runners (no QEMU: compiling
+# Rust under emulation takes hours) and merged into one manifest.
+name: Container image
 
 on:
   push:
+    branches: [main]
     tags: ["v*"]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+      - ".github/ISSUE_TEMPLATE/**"
   workflow_dispatch:
+    inputs:
+      release:
+        description: "Publish a release: version tags, latest, git tag and GitHub Release"
+        type: boolean
+        default: false
+
+concurrency:
+  group: image-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref == 'refs/heads/main' }}
 
 permissions:
   contents: read
@@ -16,7 +37,39 @@ env:
   IMAGE: ghcr.io/${{ github.repository_owner }}/trove
 
 jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      minor: ${{ steps.v.outputs.minor }}
+      release: ${{ steps.v.outputs.release }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: v
+        name: Determine version
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            tag="${GITHUB_REF#refs/tags/v}"
+            if [[ "$tag" != "$version" ]]; then
+              echo "::error::tag v$tag does not match Cargo.toml version $version"; exit 1
+            fi
+            release=true
+          elif [[ "${{ inputs.release }}" == "true" ]]; then
+            if git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null; then
+              echo "::error::v$version already exists; bump the version in Cargo.toml first"; exit 1
+            fi
+            release=true
+          else
+            release=false
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "minor=${version%.*}" >> "$GITHUB_OUTPUT"
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+          echo "Version $version, release=$release" >> "$GITHUB_STEP_SUMMARY"
+
   build:
+    needs: prepare
     strategy:
       fail-fast: true
       matrix:
@@ -40,6 +93,8 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.IMAGE }}
+          labels: |
+            org.opencontainers.image.version=${{ needs.prepare.outputs.version }}
       - id: build
         uses: docker/build-push-action@v6
         with:
@@ -47,7 +102,7 @@ jobs:
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            VERSION=${{ github.ref_name }}
+            VERSION=${{ needs.prepare.outputs.version }}
             REVISION=${{ github.sha }}
           outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=${{ matrix.arch }}
@@ -65,7 +120,7 @@ jobs:
           retention-days: 1
 
   manifest:
-    needs: build
+    needs: [prepare, build]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/download-artifact@v4
@@ -84,14 +139,51 @@ jobs:
         with:
           images: ${{ env.IMAGE }}
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=${{ needs.prepare.outputs.version }},enable=${{ needs.prepare.outputs.release == 'true' }}
+            type=raw,value=${{ needs.prepare.outputs.minor }},enable=${{ needs.prepare.outputs.release == 'true' }}
+            type=raw,value=latest,enable=${{ needs.prepare.outputs.release == 'true' }}
+            type=edge,branch=main
             type=sha
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
       - name: Create multi-arch manifest
         working-directory: /tmp/digests
         run: |
           docker buildx imagetools create \
             $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
             $(printf "${IMAGE}@sha256:%s " *)
-      - run: docker buildx imagetools inspect "${IMAGE}:${{ steps.meta.outputs.version }}"
+      - name: Inspect
+        run: |
+          for t in $(jq -r '.tags[]' <<< "$DOCKER_METADATA_OUTPUT_JSON"); do
+            echo "### $t" >> "$GITHUB_STEP_SUMMARY"
+            docker buildx imagetools inspect "$t" | tee -a "$GITHUB_STEP_SUMMARY"
+          done
+
+  github-release:
+    needs: [prepare, manifest]
+    if: needs.prepare.outputs.release == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          awk -v v="$VERSION" '$0 ~ "^## \\[" v "\\]" {f=1; next} /^## \[/ {f=0} f' CHANGELOG.md > notes.md
+          cat >> notes.md <<EOF
+
+          ## Container image
+
+          \`\`\`sh
+          docker pull ${IMAGE}:${VERSION}
+          \`\`\`
+
+          Multi-arch: linux/amd64, linux/arm64.
+          EOF
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            echo "Release v$VERSION already exists"
+          else
+            # Creates the vX.Y.Z tag on this commit when it does not exist yet.
+            gh release create "v$VERSION" --target "$GITHUB_SHA" --title "Trove $VERSION" --notes-file notes.md
+          fi
