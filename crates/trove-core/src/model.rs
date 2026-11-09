@@ -133,6 +133,61 @@ pub struct ProxyConfig {
     /// Cached metadata older than this timestamp (ms) is considered stale.
     /// Set by "invalidate cache".
     pub invalidated_at: i64,
+    /// How this repository reaches its remote.
+    pub outbound: OutboundProxy,
+}
+
+/// Outbound proxy choice for a proxy repository.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum OutboundMode {
+    /// Use the server-wide setting (`http_client.proxy` or `HTTPS_PROXY` & co.).
+    #[default]
+    Inherit,
+    /// Connect directly, ignoring any configured or environment proxy.
+    Direct,
+    /// Use the proxy given in `url`.
+    Custom,
+}
+
+pub const OUTBOUND_SCHEMES: &[&str] = &["http", "https", "socks5", "socks5h"];
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct OutboundProxy {
+    pub mode: OutboundMode,
+    /// `http://host:3128`, `https://host:443`, `socks5://host:1080` (local DNS)
+    /// or `socks5h://host:1080` (the proxy resolves host names).
+    pub url: String,
+    pub username: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub password: String,
+    /// Comma-separated hosts, domains (`.corp.example`) or CIDRs that bypass the proxy.
+    pub no_proxy: String,
+}
+
+impl OutboundProxy {
+    pub fn validate(&self) -> Result<(), Error> {
+        if self.mode != OutboundMode::Custom {
+            return Ok(());
+        }
+        let parsed = url::Url::parse(self.url.trim())
+            .map_err(|e| Error::bad_request(format!("invalid outbound proxy URL '{}': {e}", self.url)))?;
+        if !OUTBOUND_SCHEMES.contains(&parsed.scheme()) {
+            return Err(Error::bad_request(format!(
+                "outbound proxy must use one of {}: got '{}'",
+                OUTBOUND_SCHEMES.join(", "),
+                parsed.scheme()
+            )));
+        }
+        if parsed.host_str().is_none_or(str::is_empty) {
+            return Err(Error::bad_request("outbound proxy URL needs a host"));
+        }
+        if parsed.port_or_known_default().is_none() {
+            return Err(Error::bad_request("outbound proxy URL needs a port, e.g. socks5://proxy:1080"));
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
@@ -199,6 +254,7 @@ impl Repository {
                 if !(p.remote_url.starts_with("http://") || p.remote_url.starts_with("https://")) {
                     return Err(Error::bad_request("proxy.remote_url must be an http(s) URL"));
                 }
+                p.outbound.validate()?;
             }
             RepoKind::Group => {
                 let g = self
@@ -314,6 +370,18 @@ mod tests {
         assert!(r.validate().is_err());
         r.config.proxy =
             Some(ProxyConfig { remote_url: "https://repo1.maven.org/maven2/".into(), ..Default::default() });
+        assert!(r.validate().is_ok());
+        let p = r.config.proxy.as_mut().unwrap();
+        p.outbound = OutboundProxy { mode: OutboundMode::Custom, url: "ftp://x:21".into(), ..Default::default() };
+        assert!(r.validate().is_err());
+        let p = r.config.proxy.as_mut().unwrap();
+        p.outbound.url = "socks5h://10.0.0.1".into();
+        assert!(r.validate().is_err(), "socks without port");
+        let p = r.config.proxy.as_mut().unwrap();
+        p.outbound.url = "socks5h://10.0.0.1:1080".into();
+        assert!(r.validate().is_ok());
+        let p = r.config.proxy.as_mut().unwrap();
+        p.outbound.url = "http://squid.corp:3128".into();
         assert!(r.validate().is_ok());
         r.name = "bad name".into();
         assert!(r.validate().is_err());

@@ -54,9 +54,14 @@ session_ttl_hours = 12
 # Seconds without receiving any data before a download is abandoned.
 timeout_secs = 300
 connect_timeout_secs = 15
-# Outbound proxy, e.g. "http://egress.internal:3128". Empty: HTTPS_PROXY /
-# HTTP_PROXY / NO_PROXY environment variables are honoured.
+# Default outbound proxy for proxy repositories: http://, https://, socks5://
+# (local DNS) or socks5h:// (proxy resolves names), credentials allowed in the
+# URL, e.g. "socks5h://user:pass@egress.internal:1080". Empty: HTTPS_PROXY /
+# HTTP_PROXY / ALL_PROXY / NO_PROXY environment variables are honoured.
+# Each proxy repository can override this (inherit / direct / custom).
 proxy = ""
+# Hosts that bypass `proxy`, comma separated.
+no_proxy = ""
 # Extra PEM CA bundle to trust, for TLS-inspecting egress proxies or remotes
 # signed by an internal CA.
 ca_bundle = ""

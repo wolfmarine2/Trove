@@ -642,3 +642,256 @@ async fn yum_and_apt_proxies_refresh_metadata() {
     let write = s.admin(reqwest::Method::PUT, "/repository/el/x.rpm").body("x").send().await.unwrap();
     assert_eq!(write.status(), StatusCode::METHOD_NOT_ALLOWED);
 }
+
+// ---------------------------------------------------------------- outbound proxies
+
+mod mini_proxies {
+    //! Minimal HTTP (absolute-form) and SOCKS5 (RFC 1928/1929) proxies that
+    //! count the connections they relay.
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+
+    use base64::Engine;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::{TcpListener, TcpStream};
+
+    #[derive(Default)]
+    pub struct Stats {
+        pub relayed: AtomicUsize,
+        pub rejected: AtomicUsize,
+        pub saw_domain: AtomicBool,
+    }
+
+    async fn pipe(a: TcpStream, b: TcpStream) {
+        let (mut ar, mut aw) = a.into_split();
+        let (mut br, mut bw) = b.into_split();
+        tokio::select! {
+            _ = tokio::io::copy(&mut ar, &mut bw) => {}
+            _ = tokio::io::copy(&mut br, &mut aw) => {}
+        }
+    }
+
+    pub async fn http(user: &'static str, pass: &'static str) -> (u16, Arc<Stats>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let stats = Arc::new(Stats::default());
+        let st = stats.clone();
+        let expected = format!("Basic {}", base64::engine::general_purpose::STANDARD.encode(format!("{user}:{pass}")));
+        tokio::spawn(async move {
+            loop {
+                let (mut client, _) = listener.accept().await.unwrap();
+                let (st, expected) = (st.clone(), expected.clone());
+                tokio::spawn(async move {
+                    let mut buf = Vec::new();
+                    let mut chunk = [0u8; 4096];
+                    while !buf.windows(4).any(|w| w == b"\r\n\r\n") {
+                        let n = client.read(&mut chunk).await.unwrap_or(0);
+                        if n == 0 {
+                            return;
+                        }
+                        buf.extend_from_slice(&chunk[..n]);
+                    }
+                    let head = String::from_utf8_lossy(&buf).to_string();
+                    let mut lines = head.split("\r\n");
+                    let request_line = lines.next().unwrap_or_default().to_string();
+                    let headers: Vec<&str> = lines.take_while(|l| !l.is_empty()).collect();
+                    let auth_ok = headers.iter().any(|h| {
+                        h.to_ascii_lowercase().starts_with("proxy-authorization:") && h[20..].trim() == expected
+                    });
+                    if !auth_ok {
+                        st.rejected.fetch_add(1, Ordering::SeqCst);
+                        let _ = client
+                            .write_all(b"HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm=\"p\"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                            .await;
+                        return;
+                    }
+                    let mut parts = request_line.split(' ');
+                    let (method, target) = (parts.next().unwrap_or("GET"), parts.next().unwrap_or("/"));
+                    let url = url::Url::parse(target).unwrap();
+                    let mut upstream =
+                        TcpStream::connect((url.host_str().unwrap(), url.port_or_known_default().unwrap()))
+                            .await
+                            .unwrap();
+                    let path = match url.query() {
+                        Some(q) => format!("{}?{q}", url.path()),
+                        None => url.path().to_string(),
+                    };
+                    let mut out = format!("{method} {path} HTTP/1.1\r\n");
+                    for h in &headers {
+                        let lower = h.to_ascii_lowercase();
+                        if !lower.starts_with("proxy-") && !lower.starts_with("connection:") {
+                            out.push_str(h);
+                            out.push_str("\r\n");
+                        }
+                    }
+                    out.push_str("Connection: close\r\n\r\n");
+                    upstream.write_all(out.as_bytes()).await.unwrap();
+                    st.relayed.fetch_add(1, Ordering::SeqCst);
+                    pipe(client, upstream).await;
+                });
+            }
+        });
+        (port, stats)
+    }
+
+    pub async fn socks5(user: &'static str, pass: &'static str) -> (u16, Arc<Stats>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let stats = Arc::new(Stats::default());
+        let st = stats.clone();
+        tokio::spawn(async move {
+            loop {
+                let (mut c, _) = listener.accept().await.unwrap();
+                let st = st.clone();
+                tokio::spawn(async move {
+                    let mut hdr = [0u8; 2];
+                    c.read_exact(&mut hdr).await.unwrap();
+                    let mut methods = vec![0u8; hdr[1] as usize];
+                    c.read_exact(&mut methods).await.unwrap();
+                    if !methods.contains(&2) {
+                        st.rejected.fetch_add(1, Ordering::SeqCst);
+                        let _ = c.write_all(&[5, 0xff]).await;
+                        return;
+                    }
+                    c.write_all(&[5, 2]).await.unwrap();
+                    // RFC 1929 username/password
+                    let mut v = [0u8; 2];
+                    c.read_exact(&mut v).await.unwrap();
+                    let mut u = vec![0u8; v[1] as usize];
+                    c.read_exact(&mut u).await.unwrap();
+                    let mut pl = [0u8; 1];
+                    c.read_exact(&mut pl).await.unwrap();
+                    let mut p = vec![0u8; pl[0] as usize];
+                    c.read_exact(&mut p).await.unwrap();
+                    if u != user.as_bytes() || p != pass.as_bytes() {
+                        st.rejected.fetch_add(1, Ordering::SeqCst);
+                        let _ = c.write_all(&[1, 1]).await;
+                        return;
+                    }
+                    c.write_all(&[1, 0]).await.unwrap();
+                    let mut req = [0u8; 4];
+                    c.read_exact(&mut req).await.unwrap();
+                    let host = match req[3] {
+                        1 => {
+                            let mut a = [0u8; 4];
+                            c.read_exact(&mut a).await.unwrap();
+                            std::net::Ipv4Addr::from(a).to_string()
+                        }
+                        3 => {
+                            let mut l = [0u8; 1];
+                            c.read_exact(&mut l).await.unwrap();
+                            let mut name = vec![0u8; l[0] as usize];
+                            c.read_exact(&mut name).await.unwrap();
+                            st.saw_domain.store(true, Ordering::SeqCst);
+                            String::from_utf8(name).unwrap()
+                        }
+                        _ => return,
+                    };
+                    let mut pb = [0u8; 2];
+                    c.read_exact(&mut pb).await.unwrap();
+                    let upstream = TcpStream::connect((host.as_str(), u16::from_be_bytes(pb))).await.unwrap();
+                    c.write_all(&[5, 0, 0, 1, 0, 0, 0, 0, 0, 0]).await.unwrap();
+                    st.relayed.fetch_add(1, Ordering::SeqCst);
+                    pipe(c, upstream).await;
+                });
+            }
+        });
+        (port, stats)
+    }
+}
+
+#[tokio::test]
+async fn per_repository_outbound_proxies() {
+    use std::sync::atomic::Ordering;
+
+    let s = Server::start().await;
+    let (http_port, http_stats) = mini_proxies::http("puser", "ppass").await;
+    let (socks_port, socks_stats) = mini_proxies::socks5("suser", "spass").await;
+    s.create_repo(json!({"name": "origin", "format": "raw", "kind": "hosted"})).await;
+    for f in ["a.txt", "b.txt", "c.txt", "d.txt", "e.txt"] {
+        s.admin(reqwest::Method::PUT, &format!("/repository/origin/{f}"))
+            .body(format!("content of {f}"))
+            .send()
+            .await
+            .unwrap();
+    }
+    let port = s.addr.port();
+    let origin_ip = format!("http://127.0.0.1:{port}/repository/origin/");
+    let origin_name = format!("http://localhost:{port}/repository/origin/");
+
+    let mk = |name: &str, remote: &str, outbound: Value| json!({"name": name, "format": "raw", "kind": "proxy", "config": {"proxy": {"remote_url": remote, "outbound": outbound}}});
+    s.create_repo(mk("via-http", &origin_ip, json!({"mode": "custom", "url": format!("http://127.0.0.1:{http_port}"), "username": "puser", "password": "ppass"}))).await;
+    s.create_repo(mk("via-socks", &origin_name, json!({"mode": "custom", "url": format!("socks5h://127.0.0.1:{socks_port}"), "username": "suser", "password": "spass"}))).await;
+    s.create_repo(mk("bad-creds", &origin_ip, json!({"mode": "custom", "url": format!("http://127.0.0.1:{http_port}"), "username": "puser", "password": "wrong"}))).await;
+    s.create_repo(mk("direct", &origin_ip, json!({"mode": "direct"}))).await;
+
+    let get = |path: &str| s.client.get(s.url(path)).send();
+    let r = get("/repository/via-http/a.txt").await.unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    assert_eq!(r.text().await.unwrap(), "content of a.txt");
+    assert_eq!(http_stats.relayed.load(Ordering::SeqCst), 1);
+
+    let r = get("/repository/via-socks/b.txt").await.unwrap();
+    assert_eq!(r.text().await.unwrap(), "content of b.txt");
+    assert_eq!(socks_stats.relayed.load(Ordering::SeqCst), 1);
+    assert!(socks_stats.saw_domain.load(Ordering::SeqCst), "socks5h must let the proxy resolve host names");
+
+    let r = get("/repository/bad-creds/c.txt").await.unwrap();
+    assert_eq!(r.status(), StatusCode::BAD_GATEWAY);
+    assert!(http_stats.rejected.load(Ordering::SeqCst) >= 1);
+
+    let r = get("/repository/direct/d.txt").await.unwrap();
+    assert_eq!(r.text().await.unwrap(), "content of d.txt");
+    assert_eq!(http_stats.relayed.load(Ordering::SeqCst) + socks_stats.relayed.load(Ordering::SeqCst), 2);
+
+    // Secrets are masked in the API and kept when the masked value is sent back.
+    let repo: Value =
+        s.admin(reqwest::Method::GET, "/api/v1/repositories/via-socks").send().await.unwrap().json().await.unwrap();
+    assert_eq!(repo["config"]["proxy"]["outbound"]["password"], "********");
+    let mut cfg = repo["config"].clone();
+    cfg["proxy"]["metadata_max_age_secs"] = json!(60);
+    let upd = s
+        .admin(reqwest::Method::PUT, "/api/v1/repositories/via-socks")
+        .json(&json!({"config": cfg}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(upd.status(), StatusCode::OK);
+    // Had the mask been stored as the password, the new client would fail SOCKS auth.
+    let r = get("/repository/via-socks/e.txt").await.unwrap();
+    assert_eq!(r.text().await.unwrap(), "content of e.txt");
+    assert_eq!(socks_stats.rejected.load(Ordering::SeqCst), 0);
+
+    // Connection test without saving.
+    let test = |body: Value| s.admin(reqwest::Method::POST, "/api/v1/remote-test").json(&body).send();
+    let ok: Value = test(json!({"format": "raw", "name": "via-socks", "proxy": repo["config"]["proxy"]}))
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(ok["ok"], true, "{ok}");
+    let bad: Value = test(json!({"format": "raw", "proxy": {"remote_url": origin_ip,
+        "outbound": {"mode": "custom", "url": format!("http://127.0.0.1:{http_port}"), "username": "x", "password": "y"}}}))
+        .await.unwrap().json().await.unwrap();
+    assert_eq!(bad["ok"], false);
+    assert_eq!(bad["status"], 407);
+    let down: Value = test(json!({"format": "raw", "proxy": {"remote_url": origin_ip,
+        "outbound": {"mode": "custom", "url": "socks5://127.0.0.1:1"}}}))
+    .await
+    .unwrap()
+    .json()
+    .await
+    .unwrap();
+    assert_eq!(down["ok"], false);
+    assert!(down["status"].is_null());
+
+    // Validation.
+    let invalid = s
+        .admin(reqwest::Method::POST, "/api/v1/repositories")
+        .json(&mk("bad-url", &origin_ip, json!({"mode": "custom", "url": "ftp://proxy:21"})))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(invalid.status(), StatusCode::BAD_REQUEST);
+}

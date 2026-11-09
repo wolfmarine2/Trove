@@ -22,9 +22,10 @@ box and scales out on PostgreSQL (or openGauss) with S3-compatible storage.
 
 ## Why
 
-* **Air-gap friendly.** No external services, no CDN, fonts bundled. Proxies
-  honour an outbound HTTP proxy and a custom CA bundle; a proxy can be switched
-  to cache-only mode.
+* **Air-gap friendly.** No external services, no CDN, fonts bundled. Each
+  proxy repository picks its own outbound route (server default, direct, or an
+  HTTP/HTTPS/SOCKS5 proxy with credentials), custom CA bundles are supported,
+  and a proxy can be switched to cache-only mode.
 * **Auditable.** Every login, publish, delete and configuration change is
   written to an audit log viewable in the UI and emitted as structured logs.
 * **Small and predictable.** Content-addressed storage deduplicates identical

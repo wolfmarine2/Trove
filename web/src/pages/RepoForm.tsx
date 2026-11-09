@@ -5,6 +5,8 @@ import {
   FORMATS,
   supportedKinds,
   type Format,
+  type OutboundMode,
+  type RemoteTestResult,
   type RepoConfig,
   type RepoKind,
   type Repository,
@@ -53,6 +55,14 @@ export function RepoForm({ existing, onSaved }: { existing?: Repository; onSaved
   const [remoteUser, setRemoteUser] = useState(existing?.config.proxy?.username ?? "");
   const [remotePassword, setRemotePassword] = useState(existing?.config.proxy?.password ?? "");
   const [offline, setOffline] = useState(existing?.config.proxy?.offline ?? false);
+  const ob = existing?.config.proxy?.outbound;
+  const [obMode, setObMode] = useState<OutboundMode>(ob?.mode ?? "inherit");
+  const [obUrl, setObUrl] = useState(ob?.url ?? "");
+  const [obUser, setObUser] = useState(ob?.username ?? "");
+  const [obPassword, setObPassword] = useState(ob?.password ?? "");
+  const [obNoProxy, setObNoProxy] = useState(ob?.no_proxy ?? "");
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<RemoteTestResult | null>(null);
   const [members, setMembers] = useState<string[]>(existing?.config.group?.members ?? []);
   const [pick, setPick] = useState("");
   const [error, setError] = useState<unknown>();
@@ -78,6 +88,27 @@ export function RepoForm({ existing, onSaved }: { existing?: Repository; onSaved
     setMembers(next);
   };
 
+  const proxyConfig = () => ({
+    remote_url: remoteUrl.trim(),
+    metadata_max_age_secs: Math.max(1, maxAgeMin) * 60,
+    username: remoteUser,
+    password: remotePassword,
+    offline,
+    outbound: { mode: obMode, url: obUrl.trim(), username: obUser, password: obPassword, no_proxy: obNoProxy },
+  });
+
+  const testConnection = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      setTestResult(await api.testRemote({ format, proxy: proxyConfig(), name: existing?.name }));
+    } catch (err) {
+      setTestResult({ ok: false, url: remoteUrl, status: null, elapsed_ms: 0, message: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setTesting(false);
+    }
+  };
+
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
@@ -85,14 +116,7 @@ export function RepoForm({ existing, onSaved }: { existing?: Repository; onSaved
     setSaved(false);
     const config: RepoConfig = { write_policy: writePolicy };
     if (format === "maven") config.version_policy = versionPolicy;
-    if (kind === "proxy")
-      config.proxy = {
-        remote_url: remoteUrl.trim(),
-        metadata_max_age_secs: Math.max(1, maxAgeMin) * 60,
-        username: remoteUser,
-        password: remotePassword,
-        offline,
-      };
+    if (kind === "proxy") config.proxy = proxyConfig();
     if (kind === "group") config.group = { members };
     try {
       if (editing) {
@@ -223,6 +247,60 @@ export function RepoForm({ existing, onSaved }: { existing?: Repository; onSaved
               <span className="help">{t("form.offlineModeHelp")}</span>
             </span>
           </label>
+
+          <fieldset className="choice outbound">
+            <legend>{t("outbound.title")}</legend>
+            <p className="help">{t("outbound.help")}</p>
+            <div className="choice-row">
+              {(["inherit", "direct", "custom"] as OutboundMode[]).map((m) => (
+                <label key={m} className={`choice-item choice-kind ${obMode === m ? "on" : ""}`}>
+                  <input type="radio" name="outbound" value={m} checked={obMode === m} onChange={() => setObMode(m)} />
+                  <span className="choice-title">{t(`outbound.${m}`)}</span>
+                  <span className="help">{t(`outbound.${m}Help`)}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          {obMode === "custom" && (
+            <>
+              <Field label={t("outbound.url")} help={t("outbound.urlHelp")} htmlFor="ob-url">
+                <input
+                  id="ob-url"
+                  className="mono"
+                  value={obUrl}
+                  onChange={(e) => setObUrl(e.target.value)}
+                  required
+                  pattern="(https?|socks5h?)://.+"
+                  placeholder="socks5h://proxy.corp:1080"
+                />
+              </Field>
+              <div className="two">
+                <Field label={t("outbound.username")} htmlFor="ob-user">
+                  <input id="ob-user" value={obUser} onChange={(e) => setObUser(e.target.value)} autoComplete="off" />
+                </Field>
+                <Field label={t("outbound.password")} htmlFor="ob-pass">
+                  <input id="ob-pass" type="password" value={obPassword} onChange={(e) => setObPassword(e.target.value)} autoComplete="new-password" />
+                </Field>
+              </div>
+              <Field label={t("outbound.noProxy")} help={t("outbound.noProxyHelp")} htmlFor="ob-np">
+                <input id="ob-np" className="mono" value={obNoProxy} onChange={(e) => setObNoProxy(e.target.value)} placeholder=".corp.example,10.0.0.0/8" />
+              </Field>
+            </>
+          )}
+          <div className="actions">
+            <button type="button" className="btn btn-quiet" onClick={testConnection} disabled={testing || !remoteUrl}>
+              {testing ? t("outbound.testing") : t("outbound.test")}
+            </button>
+          </div>
+          {testResult && (
+            <p className={`note ${testResult.ok ? "note-ok" : "note-error"}`} role="status">
+              {testResult.ok
+                ? t("outbound.ok", { ms: testResult.elapsed_ms, message: testResult.message })
+                : t("outbound.fail", { message: testResult.message })}
+              <br />
+              <code>{testResult.url}</code>
+            </p>
+          )}
         </div>
       )}
 

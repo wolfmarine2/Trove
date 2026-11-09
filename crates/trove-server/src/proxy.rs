@@ -233,6 +233,7 @@ pub fn parse_challenge(header: &str) -> Option<(String, Vec<(String, String)>)> 
 /// upstream credentials when configured. Tokens are cached until expiry.
 async fn registry_token(
     state: &AppState,
+    client: &reqwest::Client,
     repo: &Repository,
     challenge: &[(String, String)],
 ) -> std::result::Result<String, String> {
@@ -251,7 +252,7 @@ async fn registry_token(
             }
         }
     }
-    let mut req = state.http.get(url.as_str());
+    let mut req = client.get(url.as_str());
     if let Some(p) = repo.proxy().filter(|p| !p.username.is_empty()) {
         req = req.basic_auth(&p.username, Some(&p.password));
     }
@@ -285,8 +286,9 @@ pub async fn send_authenticated(
 ) -> std::result::Result<reqwest::Response, String> {
     let proxy = repo.proxy().cloned().unwrap_or_default();
     let has_creds = !proxy.username.is_empty();
+    let client = state.client_for(repo).map_err(|e| e.to_string())?;
     let build = |auth: Option<&str>| {
-        let mut req = decorate(state.http.request(method.clone(), url));
+        let mut req = decorate(client.request(method.clone(), url));
         match auth {
             Some(token) => req = req.bearer_auth(token),
             None if has_creds && !registry_auth => req = req.basic_auth(&proxy.username, Some(&proxy.password)),
@@ -302,7 +304,7 @@ pub async fn send_authenticated(
     let header = resp.headers().get("www-authenticate").and_then(|v| v.to_str().ok()).unwrap_or_default().to_string();
     match parse_challenge(&header) {
         Some((scheme, params)) if scheme == "bearer" => {
-            let token = registry_token(state, repo, &params).await?;
+            let token = registry_token(state, &client, repo, &params).await?;
             let resp = build(Some(&token)).send().await.map_err(|e| chain(&e))?;
             if resp.status().is_success() {
                 // Remember the last good token: most requests share one scope.
@@ -313,8 +315,7 @@ pub async fn send_authenticated(
             Ok(resp)
         }
         Some((scheme, _)) if scheme == "basic" && has_creds => {
-            let req =
-                decorate(state.http.request(method.clone(), url)).basic_auth(&proxy.username, Some(&proxy.password));
+            let req = decorate(client.request(method.clone(), url)).basic_auth(&proxy.username, Some(&proxy.password));
             req.send().await.map_err(|e| chain(&e))
         }
         _ => Ok(resp),
@@ -332,7 +333,7 @@ pub async fn forward(
     body: bytes::Bytes,
 ) -> Result<axum::response::Response> {
     let Some(proxy) = repo.proxy() else { return Err(Error::not_found("no upstream")) };
-    let mut req = state.http.request(method, url).body(body);
+    let mut req = state.client_for(repo)?.request(method, url).body(body);
     for name in ["content-type", "accept", "content-encoding", "npm-command"] {
         if let Some(v) = headers.get(name) {
             req = req.header(name, v.as_bytes());

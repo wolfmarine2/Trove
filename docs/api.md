@@ -20,6 +20,7 @@ HTTP status. Timestamps are milliseconds since the Unix epoch.
 | DELETE | `/repositories/{name}` | admin | Refused while a group references it |
 | GET | `/repositories/{name}/browse?path=` | read | Immediate children of a path |
 | POST | `/repositories/{name}/invalidate-cache` | admin | Proxy only: refetch metadata on next request |
+| POST | `/remote-test` | admin | `{format, proxy, name?}` → `{ok, url, status, elapsed_ms, message}`; checks a remote through its outbound route without saving |
 | GET | `/assets?q=&repo=&limit=&offset=` | read | Search by path substring |
 | GET | `/assets/{id}` | read | Asset with checksums |
 | DELETE | `/assets/{id}` | admin | |
@@ -48,7 +49,14 @@ Repository `config` shape:
     "metadata_max_age_secs": 1800,
     "username": "",
     "password": "",
-    "offline": false
+    "offline": false,
+    "outbound": {
+      "mode": "inherit | direct | custom",
+      "url": "socks5h://proxy.corp:1080",
+      "username": "",
+      "password": "",
+      "no_proxy": ".corp.example,10.0.0.0/8"
+    }
   },
   "group": { "members": ["npm-hosted", "npm-proxy"] }
 }

@@ -23,6 +23,7 @@ pub fn router() -> Router<AppState> {
         .route("/repositories/{name}", get(repos::get_one).put(repos::update).delete(repos::remove))
         .route("/repositories/{name}/browse", get(repos::browse))
         .route("/repositories/{name}/invalidate-cache", post(repos::invalidate_cache))
+        .route("/remote-test", post(repos::test_remote))
         .route("/assets", get(assets::search))
         .route("/assets/{id}", get(assets::get_one).delete(assets::remove))
         .route("/users", get(users::list).post(users::create))

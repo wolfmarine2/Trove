@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-09
+
+### Added
+- Per-repository outbound proxy for proxy repositories: server default,
+  direct, or a custom HTTP, HTTPS, SOCKS5 or SOCKS5h proxy with credentials
+  and a bypass list. Docker token requests follow the same route.
+- `http_client.proxy` accepts SOCKS5 URLs; new `http_client.no_proxy`.
+- "Test connection" for remotes (`POST /api/v1/remote-test`), also in the
+  repository form.
+
 ## [0.2.0] - 2026-11-09
 
 ### Added

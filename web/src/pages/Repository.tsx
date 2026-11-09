@@ -57,12 +57,21 @@ export function RepositoryPage() {
 
 function RepoFacts({ repo }: { repo: Repository }) {
   const { t } = useI18n();
-  if (repo.kind === "proxy" && repo.config.proxy)
+  if (repo.kind === "proxy" && repo.config.proxy) {
+    const ob = repo.config.proxy.outbound;
     return (
-      <p className="facts">
-        {t("repo.remote")}: <code>{repo.config.proxy.remote_url}</code>
-      </p>
+      <div className="facts">
+        <span>
+          {t("repo.remote")}: <code>{repo.config.proxy.remote_url}</code>
+        </span>
+        {ob && ob.mode !== "inherit" && (
+          <span>
+            {t("outbound.via")}: <code>{ob.mode === "direct" ? t("outbound.viaDirect") : ob.url}</code>
+          </span>
+        )}
+      </div>
     );
+  }
   if (repo.kind === "group")
     return (
       <div className="facts">

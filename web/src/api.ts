@@ -16,6 +16,16 @@ export function supportedKinds(format: Format): RepoKind[] {
   return KINDS;
 }
 
+export type OutboundMode = "inherit" | "direct" | "custom";
+
+export interface OutboundProxy {
+  mode: OutboundMode;
+  url: string;
+  username: string;
+  password?: string;
+  no_proxy: string;
+}
+
 export interface ProxyConfig {
   remote_url: string;
   metadata_max_age_secs: number;
@@ -23,6 +33,15 @@ export interface ProxyConfig {
   password?: string;
   offline: boolean;
   invalidated_at?: number;
+  outbound?: OutboundProxy;
+}
+
+export interface RemoteTestResult {
+  ok: boolean;
+  url: string;
+  status: number | null;
+  elapsed_ms: number;
+  message: string;
 }
 
 export interface RepoConfig {
@@ -181,6 +200,8 @@ export const api = {
   createRepo: (body: Partial<Repository>) => request<Repository>("POST", "/repositories", body),
   updateRepo: (name: string, body: Partial<Repository>) => request<Repository>("PUT", `/repositories/${encodeURIComponent(name)}`, body),
   deleteRepo: (name: string) => request<void>("DELETE", `/repositories/${encodeURIComponent(name)}`),
+  testRemote: (body: { format: Format; proxy: ProxyConfig; name?: string }) =>
+    request<RemoteTestResult>("POST", "/remote-test", body),
   invalidateCache: (name: string) => request<void>("POST", `/repositories/${encodeURIComponent(name)}/invalidate-cache`),
   browse: (name: string, path: string) =>
     request<{ path: string; entries: Entry[] }>("GET", `/repositories/${encodeURIComponent(name)}/browse${q({ path })}`),

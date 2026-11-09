@@ -586,7 +586,7 @@ select:focus-visible {
   color: var(--muted);
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 0.5rem 1.5rem;
   align-items: baseline;
 }
 
@@ -866,6 +866,10 @@ select:focus-visible {
   gap: 0.4rem;
   align-items: center;
   font-weight: 500;
+}
+
+.outbound > .help {
+  margin: -0.2rem 0 0.5rem;
 }
 
 .choice-kind .help {

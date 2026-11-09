@@ -26,9 +26,47 @@ The most important settings:
 | `storage.kind` | `filesystem` | `s3` for S3, MinIO, Ceph RGW. |
 | `security.initial_admin_password` | random | Used once, when no user exists. |
 | `security.anonymous_read` | `true` | Initial value; changed later in the UI. |
-| `http_client.proxy` | env | Outbound proxy for remote registries. |
+| `http_client.proxy` | env | Default outbound proxy (http, https, socks5, socks5h). |
+| `http_client.no_proxy` | — | Hosts bypassing `http_client.proxy`. |
 | `http_client.ca_bundle` | — | Extra trusted CAs (PEM). |
 | `log.json` | `false` | JSON lines for log shippers. |
+
+## Outbound proxies
+
+Proxy repositories fetch from their remotes over HTTP. The route is chosen per
+repository (**Settings → Outbound proxy** in the UI, or
+`config.proxy.outbound` in the API):
+
+| Mode | Behaviour |
+| ---- | --------- |
+| `inherit` (default) | `http_client.proxy` / `http_client.no_proxy`; when unset, `HTTPS_PROXY`, `HTTP_PROXY`, `ALL_PROXY`, `NO_PROXY` |
+| `direct` | No proxy, even if the server default or environment sets one |
+| `custom` | The repository's own proxy |
+
+Supported proxy URLs:
+
+* `http://host:3128` — HTTP proxy (CONNECT for https remotes, absolute-form for http remotes)
+* `https://host:443` — HTTP proxy reached over TLS
+* `socks5://host:1080` — SOCKS5, Trove resolves remote host names
+* `socks5h://host:1080` — SOCKS5, the proxy resolves host names (use this when
+  internal DNS cannot resolve public registries)
+
+Credentials are given as username/password (Basic `Proxy-Authorization` for
+HTTP proxies, RFC 1929 for SOCKS5) and are masked in the API. `no_proxy` takes
+comma-separated hosts, `.domain` suffixes and CIDRs. Docker token requests use
+the same route as the registry itself.
+
+Example: Docker Hub through a SOCKS5 jump host, the npm mirror direct, PyPI
+through the corporate Squid:
+
+```json
+{"name": "docker-hub", "format": "docker", "kind": "proxy", "config": {"proxy": {
+  "remote_url": "https://registry-1.docker.io",
+  "outbound": {"mode": "custom", "url": "socks5h://jump.corp:1080", "username": "svc-trove", "password": "…"}}}}
+```
+
+**Test connection** in the repository form (`POST /api/v1/remote-test`)
+checks the remote through the selected route without saving.
 
 ## Runtime settings
 

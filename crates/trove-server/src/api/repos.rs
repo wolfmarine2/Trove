@@ -31,6 +31,9 @@ fn masked(mut repo: Repository) -> Repository {
         if !p.password.is_empty() {
             p.password = MASK.into();
         }
+        if !p.outbound.password.is_empty() {
+            p.outbound.password = MASK.into();
+        }
     }
     repo
 }
@@ -200,6 +203,9 @@ pub async fn update(
             if new.password == MASK {
                 new.password = old.password.clone();
             }
+            if new.outbound.password == MASK {
+                new.outbound.password = old.outbound.password.clone();
+            }
             if new.invalidated_at == 0 {
                 new.invalidated_at = old.invalidated_at;
             }
@@ -276,4 +282,94 @@ pub async fn invalidate_cache(
     state.clear_negative_for_repo(&repo.id).await;
     audit::record(&state, &principal, &headers, "repository.invalidate_cache", &repo.name, "").await;
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+pub struct RemoteTestReq {
+    format: Format,
+    proxy: ProxyConfig,
+    /// Existing repository whose stored secrets replace masked values.
+    #[serde(default)]
+    name: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct RemoteTestResult {
+    ok: bool,
+    url: String,
+    status: Option<u16>,
+    elapsed_ms: u64,
+    message: String,
+}
+
+/// Check that a remote is reachable with the given credentials and outbound
+/// proxy, without saving anything.
+pub async fn test_remote(
+    State(state): State<AppState>,
+    principal: Principal,
+    Json(mut req): Json<RemoteTestReq>,
+) -> ApiResult<Json<RemoteTestResult>> {
+    principal.require_admin()?;
+    if let Some(name) = req.name.as_deref() {
+        if let Some(old) = state.db.get_repo_by_name(name).await?.and_then(|r| r.config.proxy) {
+            if req.proxy.password == MASK {
+                req.proxy.password = old.password;
+            }
+            if req.proxy.outbound.password == MASK {
+                req.proxy.outbound.password = old.outbound.password;
+            }
+        }
+    }
+    req.proxy.outbound.validate()?;
+    let remote = req.proxy.remote_url.trim().trim_end_matches('/').to_string();
+    if !(remote.starts_with("http://") || remote.starts_with("https://")) {
+        return Err(Error::bad_request("remote URL must start with http:// or https://").into());
+    }
+    let url = match req.format {
+        Format::Docker => format!("{}/v2/", remote.strip_suffix("/v2").unwrap_or(&remote)),
+        Format::Cargo => format!("{remote}/config.json"),
+        Format::Yum => format!("{remote}/repodata/repomd.xml"),
+        _ => format!("{remote}/"),
+    };
+    let client = state.client_for_outbound(&req.proxy.outbound)?;
+    let mut request = client.get(&url);
+    if !req.proxy.username.is_empty() && req.format != Format::Docker {
+        request = request.basic_auth(&req.proxy.username, Some(&req.proxy.password));
+    }
+    let started = std::time::Instant::now();
+    let result = match request.send().await {
+        Ok(resp) => {
+            let status = resp.status().as_u16();
+            // 401 (registry challenge) and 404 (no index at the root) still
+            // prove the network path to the remote works.
+            let reachable = (200..400).contains(&status) || status == 401 || status == 404;
+            let message = match status {
+                407 => "the outbound proxy rejected the credentials (HTTP 407)".to_string(),
+                401 => "reachable; the remote requires authentication (HTTP 401)".to_string(),
+                404 => "reachable; nothing at the repository root (HTTP 404)".to_string(),
+                403 => "the remote or the proxy denied access (HTTP 403)".to_string(),
+                405 => "HTTP 405: the outbound proxy may not support plain-HTTP forwarding; try an https:// remote"
+                    .to_string(),
+                s => format!("HTTP {s}"),
+            };
+            RemoteTestResult {
+                ok: reachable,
+                url,
+                status: Some(status),
+                elapsed_ms: started.elapsed().as_millis() as u64,
+                message,
+            }
+        }
+        Err(e) => {
+            let mut message = e.to_string();
+            let mut src = std::error::Error::source(&e);
+            while let Some(c) = src {
+                message.push_str(": ");
+                message.push_str(&c.to_string());
+                src = c.source();
+            }
+            RemoteTestResult { ok: false, url, status: None, elapsed_ms: started.elapsed().as_millis() as u64, message }
+        }
+    };
+    Ok(Json(result))
 }

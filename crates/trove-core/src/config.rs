@@ -121,8 +121,12 @@ pub struct HttpClientConfig {
     pub timeout_secs: u64,
     /// Connect timeout, in seconds.
     pub connect_timeout_secs: u64,
-    /// Outbound HTTP(S) proxy. When empty, `HTTPS_PROXY`/`HTTP_PROXY` are honoured.
+    /// Default outbound proxy (`http://`, `https://`, `socks5://`, `socks5h://`).
+    /// When empty, `HTTPS_PROXY`/`HTTP_PROXY`/`ALL_PROXY`/`NO_PROXY` are honoured.
+    /// Proxy repositories can override this individually.
     pub proxy: String,
+    /// Hosts that bypass `proxy` (comma separated), e.g. `localhost,.corp.example,10.0.0.0/8`.
+    pub no_proxy: String,
     /// Additional PEM CA bundle to trust (corporate TLS inspection, internal CAs).
     pub ca_bundle: String,
     pub user_agent: String,
@@ -134,6 +138,7 @@ impl Default for HttpClientConfig {
             timeout_secs: 300,
             connect_timeout_secs: 15,
             proxy: String::new(),
+            no_proxy: String::new(),
             ca_bundle: String::new(),
             user_agent: format!("Trove/{}", env!("CARGO_PKG_VERSION")),
         }
