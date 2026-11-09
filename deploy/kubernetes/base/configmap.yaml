@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: trove
+data:
+  trove.toml: |
+    [server]
+    bind = "0.0.0.0:8081"
+    data_dir = "/data"
+    # base_url = "https://trove.example.com"
+
+    [security]
+    anonymous_read = true
+
+    [log]
+    level = "info"
+    json = true

@@ -1,0 +1,31 @@
+[package]
+name = "trove-storage"
+description = "Content-addressed blob storage (filesystem / S3) for Trove"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[features]
+default = ["s3"]
+s3 = ["object_store/aws"]
+
+[dependencies]
+trove-core.workspace = true
+anyhow.workspace = true
+bytes.workspace = true
+futures.workspace = true
+hex.workspace = true
+md-5.workspace = true
+object_store = { workspace = true, features = ["fs"] }
+sha1.workspace = true
+sha2.workspace = true
+tempfile.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

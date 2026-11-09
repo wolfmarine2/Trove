@@ -1,0 +1,54 @@
+# Single replica with SQLite and filesystem storage on a PVC.
+# For several replicas use PostgreSQL + S3 (see overlays/production).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trove
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8081"
+        prometheus.io/path: /metrics
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: trove
+          image: trove
+          args: ["serve"]
+          env:
+            - name: TROVE_CONFIG
+              value: /etc/trove/trove.toml
+          ports:
+            - name: http
+              containerPort: 8081
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 20
+          resources:
+            requests: { cpu: 200m, memory: 256Mi }
+            limits: { memory: 1Gi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: config, mountPath: /etc/trove, readOnly: true }
+            - { name: data, mountPath: /data }
+      volumes:
+        - name: config
+          configMap: { name: trove }
+        - name: data
+          persistentVolumeClaim: { claimName: trove-data }

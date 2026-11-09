@@ -1,0 +1,21 @@
+[server]
+bind = "0.0.0.0:8081"
+data_dir = "/data"
+base_url = "https://trove.example.com"
+
+[storage]
+kind = "s3"
+
+[storage.s3]
+bucket = "trove"
+endpoint = "http://minio.storage.svc:9000"
+region = "us-east-1"
+allow_http = true
+path_style = true
+
+[security]
+anonymous_read = false
+
+[log]
+level = "info"
+json = true

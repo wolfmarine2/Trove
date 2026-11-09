@@ -1,0 +1,37 @@
+# Quick start with PostgreSQL: `docker compose up -d`, then open http://localhost:8081
+# The admin password is printed in the logs on first start unless set below.
+services:
+  trove:
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile
+    image: trove:latest
+    ports:
+      - "8081:8081"
+    environment:
+      TROVE__DATABASE__URL: postgres://trove:trove@postgres:5432/trove
+      TROVE__SECURITY__INITIAL_ADMIN_PASSWORD: change-me-now
+    volumes:
+      - trove-data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: trove
+      POSTGRES_PASSWORD: trove
+      POSTGRES_DB: trove
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trove"]
+      interval: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  trove-data:
+  pg-data:

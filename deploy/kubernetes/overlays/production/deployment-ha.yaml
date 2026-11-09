@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trove
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  template:
+    spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: { app.kubernetes.io/name: trove }
+      containers:
+        - name: trove
+          envFrom:
+            - secretRef: { name: trove-secrets }
+          resources:
+            requests: { cpu: 500m, memory: 512Mi }
+            limits: { memory: 2Gi }
+      volumes:
+        - name: data
+          persistentVolumeClaim: null
+          emptyDir: { sizeLimit: 20Gi }

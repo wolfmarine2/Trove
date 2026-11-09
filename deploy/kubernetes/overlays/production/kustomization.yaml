@@ -1,0 +1,33 @@
+# Highly available: 2+ replicas sharing PostgreSQL (or openGauss) and an
+# S3-compatible bucket (MinIO / Ceph RGW). Create the secret first:
+#
+#   kubectl create secret generic trove-secrets \
+#     --from-literal=TROVE__DATABASE__URL=postgres://trove:...@postgres:5432/trove \
+#     --from-literal=TROVE__STORAGE__S3__ACCESS_KEY_ID=... \
+#     --from-literal=TROVE__STORAGE__S3__SECRET_ACCESS_KEY=... \
+#     --from-literal=TROVE__SECURITY__INITIAL_ADMIN_PASSWORD=...
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: trove
+resources:
+  - ../../base
+  - ingress.yaml
+  - pdb.yaml
+patches:
+  - path: deployment-ha.yaml
+  - target: { kind: PersistentVolumeClaim, name: trove-data }
+    patch: |
+      $patch: delete
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: trove-data
+configMapGenerator:
+  - name: trove
+    behavior: replace
+    files:
+      - trove.toml
+images:
+  - name: trove
+    newName: registry.example.com/platform/trove
+    newTag: 0.1.0

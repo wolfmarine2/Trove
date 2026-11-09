@@ -1,0 +1,72 @@
+# Trove configuration.
+#
+# Every key can be overridden with an environment variable named
+# TROVE__<SECTION>__<KEY>, for example TROVE__DATABASE__URL=postgres://...
+# Values shown are the defaults.
+
+[server]
+# Address and port to listen on.
+bind = "0.0.0.0:8081"
+# Public URL of this server, used in generated URLs (npm tarballs, Cargo
+# config.json, PyPI links). Set it when Trove runs behind a reverse proxy or
+# ingress. Empty: derived from the Host / X-Forwarded-* headers.
+base_url = ""
+# Largest accepted upload, in MiB.
+max_upload_mb = 4096
+# SQLite database, filesystem blobs and temporary files live here.
+data_dir = "data"
+
+[database]
+# Empty: SQLite at <data_dir>/trove.db (single node).
+# PostgreSQL / openGauss for multi-replica deployments:
+#   url = "postgres://trove:secret@postgres:5432/trove"
+url = ""
+max_connections = 16
+
+[storage]
+# "filesystem" or "s3".
+kind = "filesystem"
+# Empty: <data_dir>/blobs
+path = ""
+
+[storage.s3]
+# Any S3-compatible store: AWS S3, MinIO, Ceph RGW.
+bucket = ""
+endpoint = ""          # e.g. "http://minio.storage.svc:9000"
+region = "us-east-1"
+access_key_id = ""
+secret_access_key = ""
+prefix = ""            # optional key prefix inside the bucket
+allow_http = false     # true for in-cluster MinIO over plain HTTP
+path_style = true      # MinIO and Ceph usually need path-style addressing
+
+[security]
+# Password of the bootstrap "admin" user, used only on first start. Empty:
+# a random password is written to <data_dir>/admin.password.
+initial_admin_password = ""
+# Initial value of the anonymous-read setting (changeable in the UI).
+anonymous_read = true
+# Web UI session lifetime.
+session_ttl_hours = 12
+
+[http_client]
+# Settings for requests to remote registries (proxy repositories).
+timeout_secs = 300
+connect_timeout_secs = 15
+# Outbound proxy, e.g. "http://egress.internal:3128". Empty: HTTPS_PROXY /
+# HTTP_PROXY / NO_PROXY environment variables are honoured.
+proxy = ""
+# Extra PEM CA bundle to trust, for TLS-inspecting egress proxies or remotes
+# signed by an internal CA.
+ca_bundle = ""
+
+[ui]
+# Serve the web UI from this directory instead of the copy embedded in the
+# binary. Useful during UI development: dir = "web/dist"
+dir = ""
+
+[log]
+# tracing filter, e.g. "info,trove_server=debug". RUST_LOG takes precedence.
+level = "info"
+# JSON log lines for log collectors (Loki, Elasticsearch).
+json = false
