@@ -96,7 +96,7 @@ jobs:
           labels: |
             org.opencontainers.image.version=${{ needs.prepare.outputs.version }}
       - id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: ${{ matrix.platform }}
