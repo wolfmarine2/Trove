@@ -4,6 +4,7 @@ import {
   api,
   FORMATS,
   supportedKinds,
+  type ContentDisposition,
   type Format,
   type OutboundMode,
   type RemoteTestResult,
@@ -48,6 +49,8 @@ export function RepoForm({ existing, onSaved }: { existing?: Repository; onSaved
   const [kind, setKind] = useState<RepoKind>(existing?.kind ?? "hosted");
   const [description, setDescription] = useState(existing?.description ?? "");
   const [online, setOnline] = useState(existing?.online ?? true);
+  const [isPrivate, setIsPrivate] = useState(existing?.config.private ?? false);
+  const [disposition, setDisposition] = useState<ContentDisposition>(existing?.config.content_disposition ?? "attachment");
   const [writePolicy, setWritePolicy] = useState<WritePolicy>(existing?.config.write_policy ?? "allow_once");
   const [versionPolicy, setVersionPolicy] = useState<VersionPolicy>(existing?.config.version_policy ?? "release");
   const [remoteUrl, setRemoteUrl] = useState(existing?.config.proxy?.remote_url ?? DEFAULT_REMOTES.maven);
@@ -114,7 +117,8 @@ export function RepoForm({ existing, onSaved }: { existing?: Repository; onSaved
     setBusy(true);
     setError(undefined);
     setSaved(false);
-    const config: RepoConfig = { write_policy: writePolicy };
+    const config: RepoConfig = { write_policy: writePolicy, private: isPrivate };
+    if (format === "raw") config.content_disposition = disposition;
     if (format === "maven") config.version_policy = versionPolicy;
     if (kind === "proxy") config.proxy = proxyConfig();
     if (kind === "group") config.group = { members };
@@ -187,6 +191,23 @@ export function RepoForm({ existing, onSaved }: { existing?: Repository; onSaved
           <span className="help">{t("form.onlineHelp")}</span>
         </span>
       </label>
+
+      <label className="check">
+        <input type="checkbox" checked={isPrivate} onChange={(e) => setIsPrivate(e.target.checked)} />
+        <span>
+          {t("form.private")}
+          <span className="help">{t("form.privateHelp")}</span>
+        </span>
+      </label>
+
+      {format === "raw" && (
+        <Field label={t("form.disposition")} htmlFor="cd">
+          <select id="cd" value={disposition} onChange={(e) => setDisposition(e.target.value as ContentDisposition)}>
+            <option value="attachment">{t("form.disposition.attachment")}</option>
+            <option value="inline">{t("form.disposition.inline")}</option>
+          </select>
+        </Field>
+      )}
 
       {kind === "hosted" && (
         <Field label={t("form.writePolicy")} htmlFor="wp">

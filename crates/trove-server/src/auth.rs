@@ -118,6 +118,15 @@ impl Principal {
         if self.user.is_some() || state.anonymous_read() { Ok(()) } else { Err(Error::Unauthorized) }
     }
 
+    /// Whether this caller may read `repo` (private repositories need a user).
+    pub fn can_read_repo(&self, state: &AppState, repo: &trove_core::model::Repository) -> bool {
+        self.user.is_some() || (state.anonymous_read() && !repo.config.private)
+    }
+
+    pub fn require_repo_read(&self, state: &AppState, repo: &trove_core::model::Repository) -> Result<()> {
+        if self.can_read_repo(state, repo) { Ok(()) } else { Err(Error::Unauthorized) }
+    }
+
     pub fn require_deploy(&self) -> Result<()> {
         match self.role() {
             None => Err(Error::Unauthorized),

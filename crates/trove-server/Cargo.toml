@@ -55,5 +55,5 @@ tracing-subscriber.workspace = true
 url.workspace = true
 
 [dev-dependencies]
-reqwest = { workspace = true, features = ["multipart"] }
+reqwest = { workspace = true, features = ["multipart", "cookies"] }
 tempfile.workspace = true

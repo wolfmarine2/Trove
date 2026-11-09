@@ -40,6 +40,8 @@ pub struct RepoStats {
 pub struct AssetQuery {
     pub q: String,
     pub repo_id: Option<String>,
+    /// Repositories whose assets must not be returned (e.g. private ones for anonymous callers).
+    pub exclude_repo_ids: Vec<String>,
     pub limit: i64,
     pub offset: i64,
 }
@@ -405,23 +407,38 @@ impl Db {
     pub async fn search_assets(&self, q: &AssetQuery) -> Result<(Vec<Asset>, i64)> {
         let pattern = format!("%{}%", q.q.to_lowercase().replace(['%', '_'], ""));
         let limit = if q.limit <= 0 { 50 } else { q.limit.min(500) };
-        let (where_sql, has_repo) = match &q.repo_id {
-            Some(_) => ("WHERE LOWER(a.path) LIKE $1 AND a.repo_id = $2", true),
-            None => ("WHERE LOWER(a.path) LIKE $1", false),
-        };
+        let mut args: Vec<String> = vec![pattern];
+        let mut clauses = vec!["LOWER(a.path) LIKE $1".to_string()];
+        if let Some(repo) = &q.repo_id {
+            args.push(repo.clone());
+            clauses.push(format!("a.repo_id = ${}", args.len()));
+        }
+        if !q.exclude_repo_ids.is_empty() {
+            let mut marks = Vec::new();
+            for id in &q.exclude_repo_ids {
+                args.push(id.clone());
+                marks.push(format!("${}", args.len()));
+            }
+            clauses.push(format!("a.repo_id NOT IN ({})", marks.join(", ")));
+        }
+        let where_sql = format!("WHERE {}", clauses.join(" AND "));
+
         let count_sql = format!("SELECT COUNT(*) FROM assets a {where_sql}");
-        let mut count_q = sqlx::query(AssertSqlSafe(count_sql.as_str())).bind(&pattern);
-        if has_repo {
-            count_q = count_q.bind(q.repo_id.as_deref());
+        let mut count_q = sqlx::query(AssertSqlSafe(count_sql.as_str()));
+        for a in &args {
+            count_q = count_q.bind(a);
         }
         let total: i64 = count_q.fetch_one(&self.pool).await?.try_get(0)?;
 
-        let (lim_idx, off_idx) = if has_repo { (3, 4) } else { (2, 3) };
-        let sql =
-            format!("{} {where_sql} ORDER BY a.updated_at DESC LIMIT ${lim_idx} OFFSET ${off_idx}", Self::ASSET_SELECT);
-        let mut query = sqlx::query(AssertSqlSafe(sql.as_str())).bind(&pattern);
-        if has_repo {
-            query = query.bind(q.repo_id.as_deref());
+        let sql = format!(
+            "{} {where_sql} ORDER BY a.updated_at DESC LIMIT ${} OFFSET ${}",
+            Self::ASSET_SELECT,
+            args.len() + 1,
+            args.len() + 2
+        );
+        let mut query = sqlx::query(AssertSqlSafe(sql.as_str()));
+        for a in &args {
+            query = query.bind(a);
         }
         let rows = query.bind(limit).bind(q.offset.max(0)).fetch_all(&self.pool).await?;
         let assets = rows.iter().map(Self::map_asset).collect::<Result<Vec<_>>>()?;

@@ -44,11 +44,15 @@ export interface RemoteTestResult {
   message: string;
 }
 
+export type ContentDisposition = "attachment" | "inline";
+
 export interface RepoConfig {
   write_policy: WritePolicy;
   proxy?: ProxyConfig;
   group?: { members: string[] };
   version_policy?: VersionPolicy;
+  private?: boolean;
+  content_disposition?: ContentDisposition;
 }
 
 export interface Repository {
@@ -185,6 +189,30 @@ const q = (params: Record<string, string | number | undefined>) => {
   const str = s.toString();
   return str ? `?${str}` : "";
 };
+
+/** Path inside a repository, percent-encoded per segment. */
+export function repositoryPath(repo: string, path: string): string {
+  return `/repository/${encodeURIComponent(repo)}/${path.split("/").filter(Boolean).map(encodeURIComponent).join("/")}`;
+}
+
+/** Upload one file with progress; resolves with the HTTP status. */
+export function uploadFile(repo: string, path: string, file: File, onProgress: (loaded: number) => void): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", repositoryPath(repo, path));
+    xhr.setRequestHeader("x-trove-request", "1");
+    xhr.withCredentials = true;
+    xhr.upload.onprogress = (e) => onProgress(e.loaded);
+    xhr.onload = () => resolve(xhr.status);
+    xhr.onerror = () => reject(new Error("network error"));
+    xhr.send(file);
+  });
+}
+
+export async function deletePath(repo: string, path: string): Promise<void> {
+  const resp = await fetch(repositoryPath(repo, path), { method: "DELETE", headers: { "x-trove-request": "1" }, credentials: "same-origin" });
+  if (!resp.ok && resp.status !== 204) throw new ApiError(resp.status, (await resp.text()).trim() || resp.statusText);
+}
 
 export const api = {
   status: () => request<{ version: string; anonymous_read: boolean }>("GET", "/status"),

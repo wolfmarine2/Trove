@@ -935,3 +935,111 @@ async fn fresh_install_is_an_anonymous_public_mirror() {
     assert_eq!(anon("/api/v1/users").await.unwrap().status(), StatusCode::UNAUTHORIZED);
     assert_eq!(anon("/api/v1/system/audit").await.unwrap().status(), StatusCode::UNAUTHORIZED);
 }
+
+#[tokio::test]
+async fn raw_private_repositories_uploads_and_disposition() {
+    let s = Server::start().await;
+    s.create_repo(json!({"name": "certs", "format": "raw", "kind": "hosted", "config": {"private": true}})).await;
+    s.create_repo(
+        json!({"name": "site", "format": "raw", "kind": "hosted", "config": {"content_disposition": "inline"}}),
+    )
+    .await;
+    s.create_repo(json!({"name": "files", "format": "raw", "kind": "hosted"})).await;
+
+    // Browser session uploads need the CSRF header.
+    let jar = reqwest::Client::builder().no_proxy().cookie_store(true).build().unwrap();
+    let login = jar
+        .post(s.url("/api/v1/auth/login"))
+        .json(&json!({"username": ADMIN.0, "password": ADMIN.1}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(login.status(), StatusCode::OK);
+    let no_csrf =
+        jar.put(s.url("/repository/certs/ca/root-ca.crt")).body("-----BEGIN CERTIFICATE-----").send().await.unwrap();
+    assert_eq!(no_csrf.status(), StatusCode::FORBIDDEN);
+    for (path, body) in [
+        ("ca/root-ca.crt", "-----BEGIN CERTIFICATE-----"),
+        ("ca/intermediate.crt", "INT"),
+        ("keys/server.key", "PRIVATE"),
+    ] {
+        let r = jar
+            .put(s.url(&format!("/repository/certs/{path}")))
+            .header("x-trove-request", "1")
+            .body(body)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::CREATED, "{path}");
+    }
+
+    // Anonymous callers cannot see or read the private repository...
+    let anon = |p: &str| s.client.get(s.url(p)).send();
+    let r = anon("/repository/certs/ca/root-ca.crt").await.unwrap();
+    assert_eq!(r.status(), StatusCode::UNAUTHORIZED);
+    assert!(r.headers().contains_key("www-authenticate"));
+    let repos: Vec<Value> = anon("/api/v1/repositories").await.unwrap().json().await.unwrap();
+    assert!(repos.iter().all(|r| r["name"] != "certs"));
+    assert_eq!(anon("/api/v1/repositories/certs/browse?path=").await.unwrap().status(), StatusCode::UNAUTHORIZED);
+    let found: Value = anon("/api/v1/assets?q=.crt").await.unwrap().json().await.unwrap();
+    assert_eq!(found["total"], 0);
+    // ...signed-in users can, and downloads are attachments with the file name.
+    let r = s.admin(reqwest::Method::GET, "/repository/certs/ca/root-ca.crt").send().await.unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    let cd = r.headers()["content-disposition"].to_str().unwrap().to_string();
+    assert!(cd.starts_with("attachment; filename=\"root-ca.crt\""), "{cd}");
+    let found: Value =
+        s.admin(reqwest::Method::GET, "/api/v1/assets?q=.crt").send().await.unwrap().json().await.unwrap();
+    assert_eq!(found["total"], 2);
+
+    // Public repositories stay anonymous; inline files are sandboxed.
+    s.admin(reqwest::Method::PUT, "/repository/site/index.html")
+        .body("<script>alert(1)</script>")
+        .send()
+        .await
+        .unwrap();
+    let r = anon("/repository/site/index.html").await.unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    assert!(r.headers()["content-disposition"].to_str().unwrap().starts_with("inline"));
+    assert!(r.headers()["content-security-policy"].to_str().unwrap().contains("sandbox"));
+    assert_eq!(r.headers()["x-content-type-options"], "nosniff");
+
+    // A public group must not expose a private member.
+    let bad = s.admin(reqwest::Method::POST, "/api/v1/repositories")
+        .json(&json!({"name": "all-raw", "format": "raw", "kind": "group", "config": {"group": {"members": ["files", "certs"]}}}))
+        .send().await.unwrap();
+    assert_eq!(bad.status(), StatusCode::BAD_REQUEST);
+    s.create_repo(
+        json!({"name": "all-raw", "format": "raw", "kind": "group", "config": {"group": {"members": ["files"]}}}),
+    )
+    .await;
+    let files: Value =
+        s.admin(reqwest::Method::GET, "/api/v1/repositories/files").send().await.unwrap().json().await.unwrap();
+    let mut cfg = files["config"].clone();
+    cfg["private"] = json!(true);
+    let r =
+        s.admin(reqwest::Method::PUT, "/api/v1/repositories/files").json(&json!({"config": cfg})).send().await.unwrap();
+    assert_eq!(r.status(), StatusCode::BAD_REQUEST, "files is a member of the public group all-raw");
+    s.create_repo(json!({"name": "all-private", "format": "raw", "kind": "group",
+        "config": {"private": true, "group": {"members": ["certs"]}}}))
+        .await;
+    assert_eq!(anon("/repository/all-private/ca/root-ca.crt").await.unwrap().status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        s.admin(reqwest::Method::GET, "/repository/all-private/ca/root-ca.crt").send().await.unwrap().status(),
+        StatusCode::OK
+    );
+
+    // Directory delete through the browser session.
+    let del = jar.delete(s.url("/repository/certs/keys")).header("x-trove-request", "1").send().await.unwrap();
+    assert_eq!(del.status(), StatusCode::NO_CONTENT);
+    assert_eq!(
+        s.admin(reqwest::Method::GET, "/repository/certs/keys/server.key").send().await.unwrap().status(),
+        StatusCode::NOT_FOUND
+    );
+
+    // Private Cargo registries tell Cargo to send its token.
+    s.create_repo(json!({"name": "crates-priv", "format": "cargo", "kind": "hosted", "config": {"private": true}}))
+        .await;
+    let cfg: Value = anon("/repository/crates-priv/index/config.json").await.unwrap().json().await.unwrap();
+    assert_eq!(cfg["auth-required"], true);
+}

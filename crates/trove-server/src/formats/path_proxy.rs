@@ -24,7 +24,7 @@ pub async fn handle(ctx: Ctx, classify: fn(&str) -> Policy) -> Result<Response> 
     let path = normalize_path(&ctx.path)?;
     match ctx.method {
         Method::GET | Method::HEAD => {
-            ctx.principal.require_read(&ctx.state)?;
+            ctx.principal.require_repo_read(&ctx.state, &ctx.repo)?;
             if path.is_empty() || ctx.path.ends_with('/') {
                 return Err(Error::not_found("directory listings are not proxied"));
             }

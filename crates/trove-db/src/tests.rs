@@ -103,10 +103,20 @@ async fn repositories_and_assets() {
         assert_eq!(total, 1);
         assert_eq!(found[0].path, "com/acme/lib/1.0/lib-1.0.jar");
         let (_, total) = db
-            .search_assets(&AssetQuery { q: "acme".into(), repo_id: Some(r.id.clone()), limit: 1, offset: 0 })
+            .search_assets(&AssetQuery {
+                q: "acme".into(),
+                repo_id: Some(r.id.clone()),
+                limit: 1,
+                ..Default::default()
+            })
             .await
             .unwrap();
         assert_eq!(total, 2);
+        let (_, total) = db
+            .search_assets(&AssetQuery { q: "acme".into(), exclude_repo_ids: vec![r.id.clone()], ..Default::default() })
+            .await
+            .unwrap();
+        assert_eq!(total, 0);
 
         let stats = db.repo_stats().await.unwrap();
         assert_eq!(stats[0].asset_count, 2);

@@ -64,6 +64,7 @@ export function RepositoriesPage() {
                     <td>
                       <Link to={`/repositories/${r.name}`} className="repo-name">{r.name}</Link>
                       {!r.online && <span className="badge badge-off">{t("repos.offline")}</span>}
+                      {r.config.private && <span className="badge badge-private">{t("repos.private")}</span>}
                       {r.description && <span className="desc">{r.description}</span>}
                     </td>
                     <td><FormatTag format={r.format} /></td>

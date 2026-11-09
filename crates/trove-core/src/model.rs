@@ -209,6 +209,23 @@ pub struct RepoConfig {
     pub group: Option<GroupConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub version_policy: Option<VersionPolicy>,
+    /// Only signed-in users may read (even when anonymous read is on).
+    pub private: bool,
+    /// Raw repositories: how browsers should treat downloaded files.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_disposition: Option<ContentDisposition>,
+}
+
+/// `Content-Disposition` for raw downloads (Nexus' "Content Disposition").
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum ContentDisposition {
+    /// Always download as a file (safe default).
+    #[default]
+    Attachment,
+    /// Let browsers display the file; served in a sandbox so uploaded HTML
+    /// cannot run scripts on Trove's origin.
+    Inline,
 }
 
 pub const DEFAULT_METADATA_MAX_AGE_SECS: u64 = 30 * 60;

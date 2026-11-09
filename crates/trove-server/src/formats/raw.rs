@@ -2,7 +2,7 @@
 
 use axum::http::{Method, StatusCode};
 use axum::response::{Html, IntoResponse, Response};
-use trove_core::model::RepoKind;
+use trove_core::model::{ContentDisposition, RepoKind};
 use trove_core::util::normalize_path;
 use trove_core::{Error, Result};
 
@@ -15,12 +15,16 @@ pub async fn handle(mut ctx: Ctx) -> Result<Response> {
     let path = normalize_path(&ctx.path)?;
     match ctx.method.clone() {
         Method::GET | Method::HEAD => {
-            ctx.principal.require_read(&ctx.state)?;
+            ctx.principal.require_repo_read(&ctx.state, &ctx.repo)?;
             if wants_dir {
                 return listing(&ctx, &path).await;
             }
             match content::resolve(&ctx.state, &ctx.repo, &path, false, 0).await? {
-                Some(asset) => content::serve_asset(&ctx.state, &asset, &ctx.method, &ctx.headers).await,
+                Some(asset) => {
+                    let mut resp = content::serve_asset(&ctx.state, &asset, &ctx.method, &ctx.headers).await?;
+                    apply_disposition(&mut resp, &path, ctx.repo.config.content_disposition.unwrap_or_default());
+                    Ok(resp)
+                }
                 None => Err(Error::not_found(path)),
             }
         }
@@ -99,6 +103,31 @@ async fn listing(ctx: &Ctx, prefix: &str) -> Result<Response> {
     }
     html.push_str("</ul></body></html>");
     Ok(Html(html).into_response())
+}
+
+/// Set `Content-Disposition`; inline files are sandboxed so uploaded HTML or
+/// SVG cannot run scripts with access to Trove's origin.
+pub fn apply_disposition(resp: &mut Response, path: &str, disposition: ContentDisposition) {
+    use axum::http::{HeaderValue, header};
+    let name = path.rsplit('/').next().unwrap_or(path);
+    let ascii: String =
+        name.chars().map(|c| if c.is_ascii_graphic() && c != '"' && c != '\\' { c } else { '_' }).collect();
+    let encoded = percent_encoding::utf8_percent_encode(name, percent_encoding::NON_ALPHANUMERIC).to_string();
+    let kind = match disposition {
+        ContentDisposition::Attachment => "attachment",
+        ContentDisposition::Inline => "inline",
+    };
+    let h = resp.headers_mut();
+    if let Ok(v) = HeaderValue::from_str(&format!("{kind}; filename=\"{ascii}\"; filename*=UTF-8''{encoded}")) {
+        h.insert(header::CONTENT_DISPOSITION, v);
+    }
+    h.insert("x-content-type-options", HeaderValue::from_static("nosniff"));
+    if disposition == ContentDisposition::Inline {
+        h.insert(
+            header::CONTENT_SECURITY_POLICY,
+            HeaderValue::from_static("sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'"),
+        );
+    }
 }
 
 pub fn escape(s: &str) -> String {

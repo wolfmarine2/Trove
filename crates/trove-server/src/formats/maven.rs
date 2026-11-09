@@ -66,7 +66,7 @@ pub async fn handle(mut ctx: Ctx) -> Result<Response> {
     let path = normalize_path(&ctx.path)?;
     match ctx.method.clone() {
         Method::GET | Method::HEAD => {
-            ctx.principal.require_read(&ctx.state)?;
+            ctx.principal.require_repo_read(&ctx.state, &ctx.repo)?;
             if wants_dir {
                 return Err(Error::not_found("browse directories in the web UI"));
             }

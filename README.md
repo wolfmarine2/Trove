@@ -26,7 +26,7 @@ box and scales out on PostgreSQL (or openGauss) with S3-compatible storage.
 | npm    | ✓ publish, dist-tags, unpublish, `npm login` | ✓ | ✓ merged packuments | npm 10 |
 | PyPI   | ✓ twine upload (PEP 503 simple index) | ✓ JSON and HTML indexes, hash-verified | ✓ | pip, twine, uv |
 | Cargo  | ✓ sparse index, publish, yank | ✓ crates.io, checksum-verified | ✓ | cargo 1.97 |
-| Raw    | ✓ any file over HTTP PUT | ✓ | ✓ | curl |
+| Raw    | ✓ any file: web upload (files/folders) or HTTP PUT | ✓ | ✓ | curl, browser |
 | Docker / OCI | — (push planned) | ✓ Docker Hub, GHCR, Quay, Harbor…, token auth, digest-verified | ✓ | Registry API v2 (docker, containerd) |
 | APT    | — | ✓ Debian, Ubuntu, Kylin, UOS; by-hash aware | — | apt 2.7 |
 | YUM / DNF | — | ✓ openEuler, RHEL family, Fedora, EPEL | — | Registry layout (dnf) |
@@ -37,6 +37,9 @@ box and scales out on PostgreSQL (or openGauss) with S3-compatible storage.
   proxy repository picks its own outbound route (server default, direct, or an
   HTTP/HTTPS/SOCKS5 proxy with credentials), custom CA bundles are supported,
   and a proxy can be switched to cache-only mode.
+* **Private where it matters.** Any repository can require sign-in to read
+  (certificates with private keys, keystores, internal tools) while the rest
+  stays anonymous.
 * **Auditable.** Every login, publish, delete and configuration change is
   written to an audit log viewable in the UI and emitted as structured logs.
 * **Small and predictable.** Content-addressed storage deduplicates identical

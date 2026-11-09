@@ -208,9 +208,12 @@ async fn handle(
 
     match target {
         Target::Base => Ok(Json(json!({})).into_response()),
-        Target::Catalog => catalog(state).await.map_err(|e| RegistryError::from_error(e, "NAME_UNKNOWN")),
+        Target::Catalog => catalog(state, &principal).await.map_err(|e| RegistryError::from_error(e, "NAME_UNKNOWN")),
         Target::Manifest(name, reference) => {
             let (repo, image) = route(state, name).await?;
+            if !principal.can_read_repo(state, &repo) {
+                return Err(RegistryError::new(StatusCode::UNAUTHORIZED, "UNAUTHORIZED", "authentication required"));
+            }
             let asset = manifest(state, &repo, &image, reference, 0)
                 .await
                 .map_err(|e| RegistryError::from_error(e, "MANIFEST_UNKNOWN"))?
@@ -225,6 +228,9 @@ async fn handle(
         }
         Target::Blob(name, digest) => {
             let (repo, image) = route(state, name).await?;
+            if !principal.can_read_repo(state, &repo) {
+                return Err(RegistryError::new(StatusCode::UNAUTHORIZED, "UNAUTHORIZED", "authentication required"));
+            }
             let hex = sha256_of(digest).ok_or_else(|| {
                 RegistryError::new(StatusCode::BAD_REQUEST, "DIGEST_INVALID", "only sha256 digests are supported")
             })?;
@@ -245,6 +251,9 @@ async fn handle(
         }
         Target::Tags(name) => {
             let (repo, image) = route(state, name).await?;
+            if !principal.can_read_repo(state, &repo) {
+                return Err(RegistryError::new(StatusCode::UNAUTHORIZED, "UNAUTHORIZED", "authentication required"));
+            }
             let tags = tags(state, &repo, &image, 0).await.map_err(|e| RegistryError::from_error(e, "NAME_UNKNOWN"))?;
             match tags {
                 Some(list) => Ok(Json(json!({ "name": name, "tags": list })).into_response()),
@@ -522,10 +531,14 @@ fn tags<'a>(
 }
 
 /// Images that have been pulled through each Docker repository.
-async fn catalog(state: &AppState) -> Result<Response> {
+async fn catalog(state: &AppState, principal: &crate::auth::Principal) -> Result<Response> {
     let mut names = BTreeSet::new();
-    for repo in
-        state.db.list_repos().await?.into_iter().filter(|r| r.format == Format::Docker && r.kind == RepoKind::Proxy)
+    for repo in state
+        .db
+        .list_repos()
+        .await?
+        .into_iter()
+        .filter(|r| r.format == Format::Docker && r.kind == RepoKind::Proxy && principal.can_read_repo(state, r))
     {
         for a in state.db.list_assets_under(&repo.id, "").await? {
             for marker in ["/manifests/", "/tags/"] {

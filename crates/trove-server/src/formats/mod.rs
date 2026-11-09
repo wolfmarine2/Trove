@@ -105,6 +105,11 @@ async fn dispatch_inner(state: AppState, repo_name: String, path: String, req: R
         Ok(p) => p,
         Err(e) => return render_error(repo.format, e, json_errors),
     };
+    // Browser sessions may upload and delete, but only with the UI's CSRF header.
+    let safe = matches!(parts.method, Method::GET | Method::HEAD | Method::OPTIONS);
+    if principal.method == auth::AuthMethod::Session && !safe && !parts.headers.contains_key(auth::CSRF_HEADER) {
+        return render_error(repo.format, Error::forbidden("missing X-Trove-Request header"), json_errors);
+    }
     // Preserve a trailing slash: it is meaningful for directory listings and PyPI.
     let raw_path = parts.uri.path();
     let mut path = path.trim_start_matches('/').to_string();

@@ -49,7 +49,7 @@ pub async fn handle(mut ctx: Ctx) -> Result<Response> {
     match ctx.method.clone() {
         Method::POST if trimmed.is_empty() || trimmed == "legacy" => upload(&mut ctx).await,
         Method::GET | Method::HEAD => {
-            ctx.principal.require_read(&ctx.state)?;
+            ctx.principal.require_repo_read(&ctx.state, &ctx.repo)?;
             let segs: Vec<&str> = trimmed.split('/').collect();
             match segs.as_slice() {
                 ["simple"] => root_index(&ctx).await,

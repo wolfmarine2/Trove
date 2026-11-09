@@ -15,6 +15,14 @@ All notable changes to this project are documented here. The format follows
 - `http_client.proxy` accepts SOCKS5 URLs; new `http_client.no_proxy`.
 - "Test connection" for remotes (`POST /api/v1/remote-test`), also in the
   repository form.
+- Raw repositories in the web UI: upload files or whole folders with
+  progress, delete files and folders.
+- Private repositories ("require sign-in to read"): hidden from anonymous
+  listings, search and the Docker catalog; public groups cannot contain
+  them; private Cargo registries advertise `auth-required`.
+- Raw content disposition (Nexus-style): attachment by default, or inline
+  in a sandbox (`Content-Security-Policy: sandbox`).
+- Browser-session writes to `/repository/…` require the CSRF header.
 - Container build reworked for air-gapped pipelines: `Dockerfile` at the
   root, portable across Docker, Podman/Buildah and Kaniko, every base image
   and package source configurable (`BASE_REGISTRY`, `NPM_REGISTRY`,

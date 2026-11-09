@@ -220,7 +220,41 @@ gpgkey=http://trove.example.com/repository/openeuler-os/RPM-GPG-KEY-openEuler
 
 Point `baseurl` at Trove instead of `metalink`/`mirrorlist`.
 
-## Raw
+## Raw (certificates, binaries, installers, any file)
+
+Raw hosted repositories store arbitrary files by path, like Nexus' raw format.
+
+* **Web UI:** open the repository → **Browse** → **Upload**. Pick files or a
+  whole folder (sub-folders are kept) and a target folder. Admins can delete
+  files and folders from the same view.
+* **Private repositories:** tick **Require sign-in to read** for certificates
+  with private keys, keystores (`.p12`, `.jks`) or anything internal. They are
+  hidden from anonymous users in listings and search, return 401 to
+  anonymous downloads, and cannot be members of public groups.
+* **Downloads:** files are sent as attachments with their file name by
+  default. *Show in the browser* serves them inline under a sandboxing
+  `Content-Security-Policy`, so uploaded HTML cannot run scripts against
+  Trove.
+
+Example layout for a certificate repository:
+
+```
+certs/
+  ca/root-ca.crt              # public: also fine in a public repository
+  ca/intermediate-2026.crt
+  servers/api.corp/fullchain.pem
+  servers/api.corp/privkey.pem    # keep in a private repository
+  java/truststore.jks
+```
+
+```sh
+# download (public repository, no credentials)
+curl -fO https://trove.example.com/repository/certs-public/ca/root-ca.crt
+# private repository
+curl -fO -u you:<TOKEN> https://trove.example.com/repository/certs/servers/api.corp/privkey.pem
+```
+
+Command line:
 
 ```sh
 curl -u you:<TOKEN> --upload-file app.tar.gz https://trove.example.com/repository/raw-hosted/releases/app.tar.gz

@@ -60,7 +60,7 @@ pub async fn list(
     principal.require_read(&state)?;
     let stats = stats_map(&state).await?;
     let mut out = Vec::new();
-    for r in state.db.list_repos().await? {
+    for r in state.db.list_repos().await?.into_iter().filter(|r| principal.can_read_repo(&state, r)) {
         out.push(view(&state, &headers, r, &stats).await);
     }
     Ok(Json(out))
@@ -74,6 +74,7 @@ pub async fn get_one(
 ) -> ApiResult<Json<RepoView>> {
     principal.require_read(&state)?;
     let repo = state.repo(&name).await?;
+    principal.require_repo_read(&state, &repo)?;
     let stats = stats_map(&state).await?;
     Ok(Json(view(&state, &headers, repo, &stats).await))
 }
@@ -119,6 +120,11 @@ fn normalise_config(format: Format, kind: RepoKind, config: &mut RepoConfig) {
     } else {
         config.version_policy = None;
     }
+    if format == Format::Raw {
+        config.content_disposition.get_or_insert(ContentDisposition::Attachment);
+    } else {
+        config.content_disposition = None;
+    }
 }
 
 async fn validate_members(state: &AppState, repo: &Repository) -> Result<()> {
@@ -130,6 +136,12 @@ async fn validate_members(state: &AppState, repo: &Repository) -> Result<()> {
             .ok_or_else(|| Error::bad_request(format!("group member '{m}' does not exist")))?;
         if member.format != repo.format {
             return Err(Error::bad_request(format!("group member '{m}' is a {} repository", member.format)));
+        }
+        // A public group would expose a private member's content anonymously.
+        if member.config.private && !repo.config.private {
+            return Err(Error::bad_request(format!(
+                "group member '{m}' is private; make the group private too, or remove the member"
+            )));
         }
         // Reject direct cycles (A contains B contains A).
         if member.members().iter().any(|n| n == &repo.name) {
@@ -215,6 +227,23 @@ pub async fn update(
     }
     repo.validate()?;
     validate_members(&state, &repo).await?;
+    if repo.config.private {
+        let public_groups: Vec<String> = state
+            .db
+            .list_repos()
+            .await?
+            .into_iter()
+            .filter(|g| !g.config.private && g.members().iter().any(|m| m == &repo.name))
+            .map(|g| g.name)
+            .collect();
+        if !public_groups.is_empty() {
+            return Err(Error::bad_request(format!(
+                "repository is a member of public group(s) {}; make them private or remove it first",
+                public_groups.join(", ")
+            ))
+            .into());
+        }
+    }
     state.db.update_repo(&repo).await?;
     state.clear_negative_for_repo(&repo.id).await;
     audit::record(&state, &principal, &headers, "repository.update", &repo.name, "").await;
@@ -260,6 +289,7 @@ pub async fn browse(
 ) -> ApiResult<Json<serde_json::Value>> {
     principal.require_read(&state)?;
     let repo = state.repo(&name).await?;
+    principal.require_repo_read(&state, &repo)?;
     let prefix = normalize_path(&q.path)?;
     let assets = state.db.list_assets_under(&repo.id, &prefix).await?;
     let entries = content::children(&assets, &prefix);

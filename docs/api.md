@@ -43,6 +43,8 @@ Repository `config` shape:
 ```json
 {
   "write_policy": "allow_once | allow_redeploy | read_only",
+  "private": false,
+  "content_disposition": "attachment | inline (raw only)",
   "version_policy": "release | snapshot | mixed",
   "proxy": {
     "remote_url": "https://registry.npmjs.org/",

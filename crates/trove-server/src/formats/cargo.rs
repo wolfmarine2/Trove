@@ -66,7 +66,7 @@ pub async fn handle(mut ctx: Ctx) -> Result<Response> {
     match (ctx.method.clone(), segs.as_slice()) {
         (Method::GET | Method::HEAD, ["index", "config.json"]) => config_json(&ctx),
         (Method::GET | Method::HEAD, ["index", rest @ ..]) if !rest.is_empty() => {
-            ctx.principal.require_read(&ctx.state)?;
+            ctx.principal.require_repo_read(&ctx.state, &ctx.repo)?;
             let name = rest.last().copied().unwrap_or_default();
             validate_crate_name(name)?;
             if rest.join("/") != cargo_index_path(name) {
@@ -82,7 +82,7 @@ pub async fn handle(mut ctx: Ctx) -> Result<Response> {
         }
         (Method::PUT, ["api", "v1", "crates", "new"]) => publish(&mut ctx).await,
         (Method::GET | Method::HEAD, ["api", "v1", "crates", name, version, "download"]) => {
-            ctx.principal.require_read(&ctx.state)?;
+            ctx.principal.require_repo_read(&ctx.state, &ctx.repo)?;
             validate_crate_name(name)?;
             validate_version(version)?;
             let asset = download(&ctx.state, &ctx.repo, name, version, 0)
@@ -93,7 +93,7 @@ pub async fn handle(mut ctx: Ctx) -> Result<Response> {
         (Method::DELETE, ["api", "v1", "crates", name, version, "yank"]) => set_yanked(&ctx, name, version, true).await,
         (Method::PUT, ["api", "v1", "crates", name, version, "unyank"]) => set_yanked(&ctx, name, version, false).await,
         (Method::GET, ["api", "v1", "crates", _name, "owners"]) => {
-            ctx.principal.require_read(&ctx.state)?;
+            ctx.principal.require_repo_read(&ctx.state, &ctx.repo)?;
             Ok(Json(json!({ "users": [] })).into_response())
         }
         (Method::PUT | Method::DELETE, ["api", "v1", "crates", _name, "owners"]) => {
@@ -113,7 +113,7 @@ fn config_json(ctx: &Ctx) -> Result<Response> {
     let doc = json!({
         "dl": format!("{base}/api/v1/crates"),
         "api": base,
-        "auth-required": !ctx.state.anonymous_read(),
+        "auth-required": !ctx.state.anonymous_read() || ctx.repo.config.private,
     });
     Ok(content::serve_bytes("application/json", serde_json::to_vec(&doc)?, &ctx.method, &ctx.headers))
 }
@@ -460,7 +460,7 @@ async fn set_yanked(ctx: &Ctx, name: &str, version: &str, yanked: bool) -> Resul
 }
 
 async fn search(ctx: &Ctx) -> Result<Response> {
-    ctx.principal.require_read(&ctx.state)?;
+    ctx.principal.require_repo_read(&ctx.state, &ctx.repo)?;
     let q = ctx.query_param("q").unwrap_or_default().to_ascii_lowercase();
     let per_page: usize = ctx.query_param("per_page").and_then(|v| v.parse().ok()).unwrap_or(10).min(100);
     let mut repos = vec![ctx.repo.clone()];

@@ -49,11 +49,17 @@ pub async fn search(
         }
         None => None,
     };
+    if let Some(r) = repo_id.as_ref().and_then(|id| repos.get(id)) {
+        principal.require_repo_read(&state, r)?;
+    }
+    let exclude_repo_ids =
+        repos.values().filter(|r| !principal.can_read_repo(&state, r)).map(|r| r.id.clone()).collect();
     let (assets, total) = state
         .db
         .search_assets(&AssetQuery {
             q: q.q,
             repo_id,
+            exclude_repo_ids,
             limit: if q.limit == 0 { 50 } else { q.limit },
             offset: q.offset,
         })
@@ -83,6 +89,7 @@ pub async fn get_one(
     principal.require_read(&state)?;
     let asset = state.db.get_asset_by_id(&id).await?.ok_or_else(|| Error::not_found("asset"))?;
     let repo = state.db.get_repo(&asset.repo_id).await?.ok_or_else(|| Error::not_found("repository"))?;
+    principal.require_repo_read(&state, &repo)?;
     let base = content::base_url(&state, &headers);
     Ok(Json(AssetView {
         download_url: format!("{base}/repository/{}/{}", repo.name, content::encode_path(&asset.path)),

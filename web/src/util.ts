@@ -58,7 +58,7 @@ export function clientSnippets(repo: Repository, anonymousRead: boolean): Snippe
   const url = repo.url;
   const host = url.replace(/^https?:\/\//, "");
   const canPublish = repo.kind === "hosted";
-  const readAuth = !anonymousRead;
+  const readAuth = !anonymousRead || !!repo.config.private;
   switch (repo.format) {
     case "maven": {
       const servers = readAuth || canPublish;

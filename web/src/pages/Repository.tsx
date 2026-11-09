@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { Link, NavLink, useNavigate, useParams } from "react-router-dom";
-import { api, type Asset, type Repository } from "../api";
+import { api, deletePath, type Asset, type Repository } from "../api";
 import { Code, CopyButton, ErrorNote, FormatTag, KindGlyph, KindLabel, Loading, Notice, useAsync, useConfirm } from "../components";
 import { useI18n } from "../i18n";
 import { useSession } from "../session";
 import { clientSnippets, displayUrl, formatBytes, formatTime, relativeTime } from "../util";
 import { RepoForm } from "./RepoForm";
+import { UploadDialog } from "./Upload";
 
 export function RepositoryPage() {
   const params = useParams();
@@ -33,6 +34,7 @@ export function RepositoryPage() {
           <FormatTag format={repo.format} />
           <KindLabel kind={repo.kind} />
           {!repo.online && <span className="badge badge-off">{t("repos.offline")}</span>}
+          {repo.config.private && <span className="badge badge-private">{t("repos.private")}</span>}
         </div>
         {repo.description && <p className="lede">{repo.description}</p>}
         <div className={`repo-url rule-${repo.format}`}>
@@ -49,7 +51,7 @@ export function RepositoryPage() {
       </nav>
 
       {section === "setup" && <Setup repo={repo} />}
-      {section === "browse" && <Browse repo={repo} path={browsePath} />}
+      {section === "browse" && <Browse repo={repo} path={browsePath} onChanged={reload} />}
       {section === "settings" && isAdmin && <Settings repo={repo} onSaved={reload} />}
     </section>
   );
@@ -98,6 +100,7 @@ function Setup({ repo }: { repo: Repository }) {
   const { anonymousRead } = useSession();
   const snippets = clientSnippets(repo, anonymousRead);
   const needsToken = snippets.some((s) => s.code.includes("<TOKEN>"));
+  const publicRead = anonymousRead && !repo.config.private;
   return (
     <div className="setup">
       {snippets.map((s, i) => (
@@ -109,30 +112,77 @@ function Setup({ repo }: { repo: Repository }) {
         </p>
       )}
       {(repo.format === "apt" || repo.format === "yum") && <p className="help">{t("repo.osNote")}</p>}
-      {needsToken && <p className="help">{t(anonymousRead ? "repo.tokenNotePublish" : "repo.tokenNote")}</p>}
-      {anonymousRead && !needsToken && <p className="help">{t("repo.anonymousNote")}</p>}
+      {needsToken && <p className="help">{t(publicRead ? "repo.tokenNotePublish" : "repo.tokenNote")}</p>}
+      {publicRead && !needsToken && <p className="help">{t("repo.anonymousNote")}</p>}
     </div>
   );
 }
 
-function Browse({ repo, path }: { repo: Repository; path: string }) {
+function Browse({ repo, path, onChanged }: { repo: Repository; path: string; onChanged: () => void }) {
   const { t, lang } = useI18n();
   const { user } = useSession();
   const { data, error, loading, reload } = useAsync(() => api.browse(repo.name, path), [repo.name, path]);
   const [selected, setSelected] = useState<Asset | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [actionError, setActionError] = useState<unknown>();
+  const navigate = useNavigate();
   const { confirm, element } = useConfirm();
   const segments = path ? path.split("/") : [];
   const base = `/repositories/${repo.name}/browse`;
+  const hostedRaw = repo.format === "raw" && repo.kind === "hosted";
+  const canUpload = hostedRaw && (user?.role === "deployer" || user?.role === "admin");
+  const canDeleteDir = repo.kind !== "group" && user?.role === "admin" && path !== "" && (data?.entries.length ?? 0) > 0;
+
+  const removeDir = async () => {
+    if (!(await confirm(t("browse.deleteDirConfirm", { path })))) return;
+    try {
+      await deletePath(repo.name, path);
+      onChanged();
+      navigate(segments.length > 1 ? `${base}/${segments.slice(0, -1).join("/")}` : base);
+    } catch (e) {
+      setActionError(e);
+    }
+  };
 
   const remove = async (a: Asset) => {
     if (!(await confirm(t("asset.deleteConfirm", { path: a.path })))) return;
     await api.deleteAsset(a.id);
     setSelected(null);
     reload();
+    onChanged();
   };
 
   return (
     <div className="browse">
+      {(canUpload || canDeleteDir) && (
+        <div className="browse-tools">
+          {canUpload && (
+            <button className="btn btn-primary btn-small" onClick={() => setUploading(true)}>
+              {t("upload.button")}
+            </button>
+          )}
+          {canDeleteDir && (
+            <button className="btn btn-danger btn-small" onClick={removeDir}>
+              {t("browse.deleteDir")}
+            </button>
+          )}
+        </div>
+      )}
+      {uploading && (
+        <UploadDialog
+          repo={repo.name}
+          dir={path}
+          open
+          onClose={(uploaded) => {
+            setUploading(false);
+            if (uploaded) {
+              reload();
+              onChanged();
+            }
+          }}
+        />
+      )}
+      <ErrorNote error={actionError} />
       <nav className="path" aria-label="Path">
         <Link to={base}>{t("browse.root")}</Link>
         {segments.map((seg, i) => (

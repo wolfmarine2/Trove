@@ -85,7 +85,7 @@ pub async fn handle(mut ctx: Ctx) -> Result<Response> {
     validate_name(&name)?;
     match (ctx.method.clone(), rest.as_str()) {
         (Method::GET | Method::HEAD, "") => {
-            ctx.principal.require_read(&ctx.state)?;
+            ctx.principal.require_repo_read(&ctx.state, &ctx.repo)?;
             let doc = packument(&ctx.state, &ctx.repo, &name, 0)
                 .await?
                 .ok_or_else(|| Error::not_found(format!("package '{name}'")))?;
@@ -95,7 +95,7 @@ pub async fn handle(mut ctx: Ctx) -> Result<Response> {
         }
         (Method::PUT, "") => publish(&mut ctx, &name).await,
         (Method::GET | Method::HEAD, r) if r.starts_with("-/") => {
-            ctx.principal.require_read(&ctx.state)?;
+            ctx.principal.require_repo_read(&ctx.state, &ctx.repo)?;
             let file = &r[2..];
             if file.contains('/') {
                 return Err(Error::not_found(r.to_string()));
@@ -141,7 +141,7 @@ pub async fn handle(mut ctx: Ctx) -> Result<Response> {
         }
         (Method::PUT, r) if r.starts_with("-rev/") => unpublish_versions(&mut ctx, &name).await,
         (Method::GET | Method::HEAD, version) => {
-            ctx.principal.require_read(&ctx.state)?;
+            ctx.principal.require_repo_read(&ctx.state, &ctx.repo)?;
             let doc = packument(&ctx.state, &ctx.repo, &name, 0)
                 .await?
                 .ok_or_else(|| Error::not_found(format!("package '{name}'")))?;
@@ -507,7 +507,7 @@ async fn dist_tags(ctx: &mut Ctx, rest: &str) -> Result<Response> {
         .ok_or_else(|| Error::not_found(rest.to_string()))?;
     match ctx.method.clone() {
         Method::GET => {
-            ctx.principal.require_read(&ctx.state)?;
+            ctx.principal.require_repo_read(&ctx.state, &ctx.repo)?;
             let doc =
                 packument(&ctx.state, &ctx.repo, &name, 0).await?.ok_or_else(|| Error::not_found(name.clone()))?;
             Ok(Json(doc.get("dist-tags").cloned().unwrap_or(json!({}))).into_response())
@@ -564,7 +564,7 @@ async fn login(ctx: &mut Ctx) -> Result<Response> {
 }
 
 async fn search(ctx: &Ctx) -> Result<Response> {
-    ctx.principal.require_read(&ctx.state)?;
+    ctx.principal.require_repo_read(&ctx.state, &ctx.repo)?;
     let text = ctx.query_param("text").unwrap_or_default();
     let size: usize = ctx.query_param("size").and_then(|s| s.parse().ok()).unwrap_or(20).min(250);
     let mut repos = vec![ctx.repo.clone()];
@@ -580,7 +580,7 @@ async fn search(ctx: &Ctx) -> Result<Response> {
                 q: text.clone(),
                 repo_id: Some(repo.id.clone()),
                 limit: 500,
-                offset: 0,
+                ..Default::default()
             })
             .await?;
         for a in assets.iter().filter(|a| a.path.ends_with("/package.json")) {

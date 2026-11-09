@@ -34,13 +34,14 @@ pub async fn stats(State(state): State<AppState>, principal: Principal, headers:
         *entry = json!(entry.as_i64().unwrap_or(0) + 1);
     }
     let base = content::base_url(&state, &headers);
-    let names: std::collections::HashMap<_, _> = repos.iter().map(|r| (r.id.clone(), r.name.clone())).collect();
+    let names: std::collections::HashMap<_, _> =
+        repos.iter().filter(|r| principal.can_read_repo(&state, r)).map(|r| (r.id.clone(), r.name.clone())).collect();
     let recent: Vec<Value> = state
         .db
         .recent_assets(15)
         .await?
         .into_iter()
-        .filter(|a| a.uploader != "proxy")
+        .filter(|a| a.uploader != "proxy" && names.contains_key(&a.repo_id))
         .map(|a| {
             let repo = names.get(&a.repo_id).cloned().unwrap_or_default();
             json!({

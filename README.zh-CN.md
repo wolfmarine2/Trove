@@ -24,7 +24,7 @@ crates.io、Docker Hub、Ubuntu、openEuler 等），同时托管内部发布的
 | npm | ✓ publish、dist-tag、unpublish、`npm login` | ✓ | ✓ 合并 packument | npm 10 |
 | PyPI | ✓ twine 上传（PEP 503 simple 索引） | ✓ 支持 JSON/HTML 索引，校验 sha256 | ✓ | pip、twine、uv |
 | Cargo | ✓ sparse 索引、publish、yank | ✓ crates.io，校验 checksum | ✓ | cargo 1.97 |
-| Raw | ✓ 任意文件 HTTP PUT | ✓ | ✓ | curl |
+| Raw | ✓ 任意文件：网页上传（文件/文件夹）或 HTTP PUT | ✓ | ✓ | curl、浏览器 |
 | Docker / OCI | —（推送计划中） | ✓ Docker Hub、GHCR、Quay、Harbor 等，支持 token 鉴权，校验摘要 | ✓ | Registry API v2（docker、containerd） |
 | APT | — | ✓ Debian、Ubuntu、麒麟、统信 UOS，支持 by-hash | — | apt 2.7 |
 | YUM / DNF | — | ✓ openEuler、RHEL 系、Fedora、EPEL | — | 仓库目录布局（dnf） |
@@ -34,6 +34,8 @@ crates.io、Docker Hub、Ubuntu、openEuler 等），同时托管内部发布的
 * **适合隔离网络**：不依赖任何外部服务和 CDN，字体随包打包。每个代理仓库可单独选择出网
   路径（服务器默认、直连，或带认证的 HTTP/HTTPS/SOCKS5 代理），支持自定义 CA 证书，
   可切换为"只使用缓存"模式。
+* **按需私有**：任意仓库都可以设为"需要登录才能读取"（如含私钥的证书、keystore、内部工具），
+  其余仓库保持匿名访问。
 * **可审计**：登录、发布、删除、配置变更全部写入审计日志，界面可查，同时输出结构化日志。
 * **存储省空间**：按内容寻址存储，不同仓库里的相同文件只存一份；垃圾回收清理无引用的数据块。
 * **易运维**：提供 `/healthz`、`/readyz`、Prometheus `/metrics`、JSON 日志，以及单节点和
