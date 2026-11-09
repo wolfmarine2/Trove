@@ -37,7 +37,7 @@ crates.io、Docker Hub、Ubuntu、openEuler 等），同时托管内部发布的
 ## 快速开始
 
 ```sh
-# 依赖：Rust 1.85+、Node.js 20+
+# 依赖：Rust 1.94+、Node.js 20+
 make web      # 构建前端到 web/dist
 make run      # 启动于 http://127.0.0.1:8081（admin / admin12345）
 ```

@@ -1,0 +1,105 @@
+# Argo Workflows template: build the Trove image with Kaniko inside the
+# cluster and push it to Harbor. Every source can point at internal mirrors,
+# including Trove itself once it is running.
+#
+#   kubectl -n ci apply -f deploy/ci/argo-kaniko-build.yaml
+#   argo -n ci submit --from workflowtemplate/trove-image \
+#     -p revision=v0.3.0 -p image=harbor.corp/platform/trove:0.3.0 -p arch=arm64
+#
+# Prerequisites in the namespace:
+#   * secret "harbor-push": a docker config.json with push rights
+#       kubectl -n ci create secret generic harbor-push \
+#         --from-file=config.json=$HOME/.docker/config.json
+#   * nodes labelled kubernetes.io/arch=amd64 / arm64 for native builds
+#     (run once per architecture, then combine with `crane index append`
+#      or `manifest-tool` if you need a multi-arch tag).
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: trove-image
+spec:
+  entrypoint: build
+  serviceAccountName: argo-workflow
+  arguments:
+    parameters:
+      - name: repo
+        value: https://forgejo.corp/platform/trove.git
+      - name: revision
+        value: main
+      - name: image
+        value: harbor.corp/platform/trove:latest
+      - name: arch
+        value: amd64
+      - name: base-registry
+        value: harbor.corp/dockerhub/library/
+      - name: npm-registry
+        value: http://trove.corp/repository/npm-public/
+      - name: cargo-registry
+        value: sparse+http://trove.corp/repository/cargo-public/index/
+      - name: apt-mirror
+        value: http://trove.corp/repository/debian/
+      - name: apt-security-mirror
+        value: http://trove.corp/repository/debian-security/
+      - name: runtime-image
+        value: ""   # empty: debian bookworm-slim from base-registry
+  volumeClaimTemplates:
+    - metadata:
+        name: workspace
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 4Gi
+  templates:
+    - name: build
+      steps:
+        - - name: checkout
+            template: checkout
+        - - name: kaniko
+            template: kaniko
+
+    - name: checkout
+      nodeSelector:
+        kubernetes.io/arch: "{{workflow.parameters.arch}}"
+      container:
+        image: "{{workflow.parameters.base-registry}}alpine/git:2.47.2"
+        workingDir: /workspace
+        command: [sh, -c]
+        args:
+          - git clone --depth 1 --branch "{{workflow.parameters.revision}}" "{{workflow.parameters.repo}}" src
+        volumeMounts:
+          - { name: workspace, mountPath: /workspace }
+
+    - name: kaniko
+      nodeSelector:
+        kubernetes.io/arch: "{{workflow.parameters.arch}}"
+      container:
+        image: harbor.corp/gcr/kaniko-project/executor:v1.23.2
+        args:
+          - --context=dir:///workspace/src
+          - --dockerfile=Dockerfile
+          - --destination={{workflow.parameters.image}}
+          - --custom-platform=linux/{{workflow.parameters.arch}}
+          - --build-arg=BASE_REGISTRY={{workflow.parameters.base-registry}}
+          - --build-arg=NPM_REGISTRY={{workflow.parameters.npm-registry}}
+          - --build-arg=CARGO_REGISTRY={{workflow.parameters.cargo-registry}}
+          - --build-arg=APT_MIRROR={{workflow.parameters.apt-mirror}}
+          - --build-arg=APT_SECURITY_MIRROR={{workflow.parameters.apt-security-mirror}}
+          - --build-arg=VERSION={{workflow.parameters.revision}}
+          # Layer cache in Harbor: dependency layers are reused between builds.
+          - --cache=true
+          - --cache-repo=harbor.corp/platform/trove-cache
+          - --snapshot-mode=redo
+          - --compressed-caching=false
+        resources:
+          requests: { cpu: "2", memory: 4Gi }
+          limits: { memory: 8Gi }
+        volumeMounts:
+          - { name: workspace, mountPath: /workspace }
+          - { name: docker-config, mountPath: /kaniko/.docker }
+      volumes:
+        - name: docker-config
+          secret:
+            secretName: harbor-push
+            items:
+              - { key: config.json, path: config.json }

@@ -247,11 +247,11 @@ fn merge_packuments(mut docs: Vec<Value>) -> Option<Value> {
 fn rewrite_tarballs(mut doc: Value, repo_url: &str, name: &str) -> Value {
     if let Some(versions) = doc.get_mut("versions").and_then(Value::as_object_mut) {
         for manifest in versions.values_mut() {
-            if let Some(dist) = manifest.get_mut("dist").and_then(Value::as_object_mut) {
-                if let Some(t) = dist.get("tarball").and_then(Value::as_str) {
-                    let file = basename(t).to_string();
-                    dist.insert("tarball".into(), json!(format!("{repo_url}/{name}/-/{file}")));
-                }
+            if let Some(dist) = manifest.get_mut("dist").and_then(Value::as_object_mut)
+                && let Some(t) = dist.get("tarball").and_then(Value::as_str)
+            {
+                let file = basename(t).to_string();
+                dist.insert("tarball".into(), json!(format!("{repo_url}/{name}/-/{file}")));
             }
         }
     }
@@ -285,16 +285,14 @@ fn tarball<'a>(
                 }
                 let remote = repo.proxy().map(|p| p.remote_url.as_str()).unwrap_or_default();
                 let mut url = content::join_url(remote, &format!("{name}/-/{file}"));
-                if let Some(doc) = packument(state, repo, name, depth).await? {
-                    if let Some(versions) = doc.get("versions").and_then(Value::as_object) {
-                        if let Some(t) = versions
-                            .values()
-                            .filter_map(|m| m.pointer("/dist/tarball").and_then(Value::as_str))
-                            .find(|t| basename(t) == file)
-                        {
-                            url = t.to_string();
-                        }
-                    }
+                if let Some(doc) = packument(state, repo, name, depth).await?
+                    && let Some(versions) = doc.get("versions").and_then(Value::as_object)
+                    && let Some(t) = versions
+                        .values()
+                        .filter_map(|m| m.pointer("/dist/tarball").and_then(Value::as_str))
+                        .find(|t| basename(t) == file)
+                {
+                    url = t.to_string();
                 }
                 proxy::fetch(state, repo, &path, &url, false).await
             }
@@ -411,15 +409,16 @@ async fn publish(ctx: &mut Ctx, name: &str) -> Result<Response> {
             .or_else(|| (versions.len() == 1).then(|| versions.keys().next().cloned()).flatten());
         let Some(version) = owner else { return Err(Error::bad_request(format!("no version references {file}"))) };
         let manifest = versions.get_mut(&version).expect("owner exists");
-        if let Some(claimed) = manifest.pointer("/dist/integrity").and_then(Value::as_str) {
-            if claimed.starts_with("sha512-") && claimed != integrity {
-                return Err(Error::bad_request(format!("integrity mismatch for {file}")));
-            }
+        if let Some(claimed) = manifest.pointer("/dist/integrity").and_then(Value::as_str)
+            && claimed.starts_with("sha512-")
+            && claimed != integrity
+        {
+            return Err(Error::bad_request(format!("integrity mismatch for {file}")));
         }
-        if let Some(claimed) = manifest.pointer("/dist/shasum").and_then(Value::as_str) {
-            if claimed != asset.blob.sha1 {
-                return Err(Error::bad_request(format!("shasum mismatch for {file}")));
-            }
+        if let Some(claimed) = manifest.pointer("/dist/shasum").and_then(Value::as_str)
+            && claimed != asset.blob.sha1
+        {
+            return Err(Error::bad_request(format!("shasum mismatch for {file}")));
         }
         let dist = manifest
             .as_object_mut()

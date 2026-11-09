@@ -161,10 +161,10 @@ pub async fn check_password(state: &AppState, username: &str, password: &str) ->
         let p = by_token(state, password, AuthMethod::Token).await?;
         return p.user.ok_or(Error::Unauthorized);
     }
-    if let Some(id) = state.credentials.get(username, password) {
-        if let Some(u) = state.db.get_user(&id).await?.filter(|u| !u.disabled) {
-            return Ok(u);
-        }
+    if let Some(id) = state.credentials.get(username, password)
+        && let Some(u) = state.db.get_user(&id).await?.filter(|u| !u.disabled)
+    {
+        return Ok(u);
     }
     let user = state.db.get_user_by_name(username).await?;
     let ok = match &user {

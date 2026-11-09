@@ -21,6 +21,8 @@ enum Command {
     Serve,
     /// Print the effective configuration (secrets redacted) and exit.
     Config,
+    /// Exit 0 if the local server answers /healthz (container health checks).
+    Healthcheck,
     /// Reset a user's password (run on the server host).
     ResetPassword {
         username: String,
@@ -33,8 +35,12 @@ enum Command {
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let cfg = Config::load(Some(&cli.config))?;
+    if let Some(Command::Healthcheck) = cli.command {
+        return healthcheck(&cfg.server.bind);
+    }
     init_tracing(&cfg);
     match cli.command.unwrap_or(Command::Serve) {
+        Command::Healthcheck => unreachable!("handled above"),
         Command::Serve => trove_server::serve(cfg).await,
         Command::Config => {
             let mut redacted = cfg.clone();
@@ -44,12 +50,11 @@ async fn main() -> anyhow::Result<()> {
             if !redacted.storage.s3.secret_access_key.is_empty() {
                 redacted.storage.s3.secret_access_key = "<redacted>".into();
             }
-            if let Some(at) = redacted.database.url.find('@') {
-                if let Some(colon) = redacted.database.url[..at].rfind(':') {
-                    if !redacted.database.url[..colon].ends_with('/') {
-                        redacted.database.url.replace_range(colon + 1..at, "<redacted>");
-                    }
-                }
+            if let Some(at) = redacted.database.url.find('@')
+                && let Some(colon) = redacted.database.url[..at].rfind(':')
+                && !redacted.database.url[..colon].ends_with('/')
+            {
+                redacted.database.url.replace_range(colon + 1..at, "<redacted>");
             }
             println!("{}", toml::to_string_pretty(&redacted)?);
             Ok(())
@@ -78,5 +83,30 @@ fn init_tracing(cfg: &Config) {
         builder.json().init();
     } else {
         builder.init();
+    }
+}
+
+/// Minimal HTTP probe without proxies or TLS, suitable for HEALTHCHECK.
+fn healthcheck(bind: &str) -> anyhow::Result<()> {
+    use std::io::{Read, Write};
+    use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
+    use std::time::Duration;
+
+    let addr: SocketAddr = bind.to_socket_addrs()?.next().ok_or_else(|| anyhow::anyhow!("cannot resolve {bind}"))?;
+    let target = if addr.ip().is_unspecified() {
+        let loopback = if addr.is_ipv4() { "127.0.0.1" } else { "::1" };
+        SocketAddr::new(loopback.parse()?, addr.port())
+    } else {
+        addr
+    };
+    let mut stream = TcpStream::connect_timeout(&target, Duration::from_secs(3))?;
+    stream.set_read_timeout(Some(Duration::from_secs(3)))?;
+    stream.write_all(b"GET /healthz HTTP/1.0\r\nHost: localhost\r\n\r\n")?;
+    let mut response = String::new();
+    stream.read_to_string(&mut response)?;
+    if response.starts_with("HTTP/1.1 200") || response.starts_with("HTTP/1.0 200") {
+        Ok(())
+    } else {
+        anyhow::bail!("unhealthy: {}", response.lines().next().unwrap_or("no response"))
     }
 }

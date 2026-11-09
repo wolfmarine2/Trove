@@ -264,19 +264,18 @@ async fn route(state: &AppState, name: &str) -> std::result::Result<(Repository,
     let not_found =
         || RegistryError::new(StatusCode::NOT_FOUND, "NAME_UNKNOWN", format!("repository name not known: {name}"));
     let internal = |e: Error| RegistryError::from_error(e, "NAME_UNKNOWN");
-    if let Some((first, rest)) = name.split_once('/') {
-        if let Some(repo) = state.db.get_repo_by_name(first).await.map_err(internal)? {
-            if repo.format == Format::Docker {
-                if !valid_image_name(rest) {
-                    return Err(RegistryError::new(
-                        StatusCode::BAD_REQUEST,
-                        "NAME_INVALID",
-                        format!("invalid image name: {rest}"),
-                    ));
-                }
-                return Ok((repo, rest.to_string()));
-            }
+    if let Some((first, rest)) = name.split_once('/')
+        && let Some(repo) = state.db.get_repo_by_name(first).await.map_err(internal)?
+        && repo.format == Format::Docker
+    {
+        if !valid_image_name(rest) {
+            return Err(RegistryError::new(
+                StatusCode::BAD_REQUEST,
+                "NAME_INVALID",
+                format!("invalid image name: {rest}"),
+            ));
         }
+        return Ok((repo, rest.to_string()));
     }
     let default = state.db.get_setting(SETTING_DOCKER_DEFAULT_REPO).await.map_err(internal)?.filter(|s| !s.is_empty());
     let Some(default) = default else { return Err(not_found()) };
@@ -428,22 +427,22 @@ fn blob<'a>(
                 }
                 // Layers are content-addressed: reuse an identical blob already
                 // stored for another image or repository instead of downloading.
-                if let Some(info) = state.db.get_blob(hex).await? {
-                    if state.blobs.exists(hex).await? {
-                        let _guard = state.gc_lock.read().await;
-                        let (asset, _) = state
-                            .db
-                            .put_asset(NewAsset {
-                                repo_id: &repo.id,
-                                path: &path,
-                                blob: &info,
-                                content_type: "application/octet-stream",
-                                uploader: "proxy",
-                                attributes: json!({ "cached_at": now_millis(), "deduplicated": true }),
-                            })
-                            .await?;
-                        return Ok(Some(asset));
-                    }
+                if let Some(info) = state.db.get_blob(hex).await?
+                    && state.blobs.exists(hex).await?
+                {
+                    let _guard = state.gc_lock.read().await;
+                    let (asset, _) = state
+                        .db
+                        .put_asset(NewAsset {
+                            repo_id: &repo.id,
+                            path: &path,
+                            blob: &info,
+                            content_type: "application/octet-stream",
+                            uploader: "proxy",
+                            attributes: json!({ "cached_at": now_millis(), "deduplicated": true }),
+                        })
+                        .await?;
+                    return Ok(Some(asset));
                 }
                 let base = remote_base(repo);
                 let url = format!("{base}/v2/{}/blobs/sha256:{hex}", upstream_name(&base, image));

@@ -137,10 +137,10 @@ async fn get(ctx: &Ctx, path: &str) -> Result<Response> {
     if let Ok(Some(asset)) = &direct {
         return content::serve_asset(state, asset, &ctx.method, &ctx.headers).await;
     }
-    if let Some(s) = suffix {
-        if let Some(asset) = content::resolve(state, repo, base, is_metadata(base), 0).await? {
-            return Ok(content::serve_bytes("text/plain", checksum_of(&asset, s), &ctx.method, &ctx.headers));
-        }
+    if let Some(s) = suffix
+        && let Some(asset) = content::resolve(state, repo, base, is_metadata(base), 0).await?
+    {
+        return Ok(content::serve_bytes("text/plain", checksum_of(&asset, s), &ctx.method, &ctx.headers));
     }
     direct?;
     Err(Error::not_found(path.to_string()))

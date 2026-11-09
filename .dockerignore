@@ -1,5 +1,17 @@
+# Build outputs and local state
 target
 data
 web/node_modules
 web/dist
+*.db
+*.db-shm
+*.db-wal
+# The image pins its own toolchain; rust-toolchain.toml would make rustup
+# download "stable" during the build.
+rust-toolchain.toml
+# Not needed in the image
 .git
+.github
+docs
+*.md
+!README.md

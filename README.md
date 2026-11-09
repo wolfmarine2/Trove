@@ -42,7 +42,7 @@ box and scales out on PostgreSQL (or openGauss) with S3-compatible storage.
 ## Quick start
 
 ```sh
-# Prerequisites: Rust 1.85+, Node.js 20+
+# Prerequisites: Rust 1.94+, Node.js 20+
 make web                      # build the UI into web/dist
 make run                      # serve on http://127.0.0.1:8081 (admin / admin12345)
 ```

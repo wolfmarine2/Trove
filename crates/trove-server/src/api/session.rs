@@ -51,10 +51,10 @@ pub async fn login(
 }
 
 pub async fn logout(State(state): State<AppState>, principal: Principal) -> ApiResult<Response> {
-    if let Some(hash) = &principal.token_hash {
-        if principal.method == auth::AuthMethod::Session {
-            state.db.delete_token_by_hash(hash).await?;
-        }
+    if let Some(hash) = &principal.token_hash
+        && principal.method == auth::AuthMethod::Session
+    {
+        state.db.delete_token_by_hash(hash).await?;
     }
     let mut resp = StatusCode::NO_CONTENT.into_response();
     resp.headers_mut().insert(

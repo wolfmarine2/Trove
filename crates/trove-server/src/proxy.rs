@@ -75,11 +75,11 @@ pub async fn fetch_opts(
 ) -> Result<Option<Asset>> {
     let Some(proxy) = repo.proxy() else { return Ok(None) };
     let cached = state.db.get_asset(&repo.id, cache_path).await?;
-    if let Some(a) = &cached {
-        if is_fresh(repo, a, &opts) {
-            Metrics::inc(&state.metrics.proxy_hits);
-            return Ok(cached);
-        }
+    if let Some(a) = &cached
+        && is_fresh(repo, a, &opts)
+    {
+        Metrics::inc(&state.metrics.proxy_hits);
+        return Ok(cached);
     }
     if proxy.offline {
         return Ok(cached);
@@ -93,11 +93,11 @@ pub async fn fetch_opts(
     let lock = state.flight_lock(&neg_key).await;
     let _held = lock.lock().await;
     let cached = state.db.get_asset(&repo.id, cache_path).await?;
-    if let Some(a) = &cached {
-        if is_fresh(repo, a, &opts) {
-            Metrics::inc(&state.metrics.proxy_hits);
-            return Ok(cached);
-        }
+    if let Some(a) = &cached
+        && is_fresh(repo, a, &opts)
+    {
+        Metrics::inc(&state.metrics.proxy_hits);
+        return Ok(cached);
     }
 
     let conditional = |mut req: reqwest::RequestBuilder| {
@@ -187,12 +187,12 @@ pub async fn fetch_opts(
             };
         }
     };
-    if let Some(expected) = opts.expect_sha256 {
-        if !blob.sha256.eq_ignore_ascii_case(expected) {
-            Metrics::inc(&state.metrics.upstream_errors);
-            tracing::warn!(repo = %repo.name, %url, expected, actual = %blob.sha256, "upstream content failed digest check");
-            return Err(Error::Upstream(format!("{url}: digest mismatch (expected sha256:{expected})")));
-        }
+    if let Some(expected) = opts.expect_sha256
+        && !blob.sha256.eq_ignore_ascii_case(expected)
+    {
+        Metrics::inc(&state.metrics.upstream_errors);
+        tracing::warn!(repo = %repo.name, %url, expected, actual = %blob.sha256, "upstream content failed digest check");
+        return Err(Error::Upstream(format!("{url}: digest mismatch (expected sha256:{expected})")));
     }
     let (asset, _) = state
         .db

@@ -153,10 +153,10 @@ fn index_lines<'a>(
                     match index_lines(state, &m, name, depth + 1).await {
                         Ok(lines) => {
                             for l in lines {
-                                if let Some(v) = line_version(&l) {
-                                    if seen.insert(v) {
-                                        out.push(l);
-                                    }
+                                if let Some(v) = line_version(&l)
+                                    && seen.insert(v)
+                                {
+                                    out.push(l);
                                 }
                             }
                         }
@@ -233,11 +233,12 @@ fn download<'a>(
                 let dl = upstream_dl(state, repo).await?;
                 let url = expand_dl(&dl, &canonical, version, &cksum);
                 let asset = proxy::fetch(state, repo, &path, &url, false).await?;
-                if let Some(a) = &asset {
-                    if !cksum.is_empty() && a.blob.sha256 != cksum {
-                        state.db.delete_asset(&repo.id, &path).await?;
-                        return Err(Error::Upstream(format!("checksum mismatch for {name} {version}")));
-                    }
+                if let Some(a) = &asset
+                    && !cksum.is_empty()
+                    && a.blob.sha256 != cksum
+                {
+                    state.db.delete_asset(&repo.id, &path).await?;
+                    return Err(Error::Upstream(format!("checksum mismatch for {name} {version}")));
                 }
                 Ok(asset)
             }

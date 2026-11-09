@@ -30,16 +30,91 @@ WantedBy=multi-user.target
 
 ## Container image
 
+The `Dockerfile` at the repository root builds a single image (UI embedded,
+non-root UID 10001, state in `/data`, default config at
+`/etc/trove/trove.toml`). It avoids BuildKit-only syntax, so Docker, Podman,
+Buildah and Kaniko all build it the same way.
+
 ```sh
-docker build -f deploy/docker/Dockerfile -t trove:0.1.0 .
-# multi-arch (x86_64 + Kunpeng / ARM64)
-docker buildx build --platform linux/amd64,linux/arm64 -f deploy/docker/Dockerfile -t registry.example.com/trove:0.1.0 --push .
-# openEuler runtime base
-docker build --build-arg RUNTIME_IMAGE=openeuler/openeuler:24.03-lts -f deploy/docker/Dockerfile .
+make docker                                  # trove:<version> for this machine
+make docker-run                              # try it: http://localhost:8081, admin / admin12345
+make docker-multiarch IMAGE=harbor.corp/platform/trove   # amd64 + arm64 (Kunpeng), pushed
 ```
 
-The image runs as UID 10001, keeps state in `/data` and reads
-`/etc/trove/trove.toml`.
+### Build arguments
+
+| Argument | Default | Purpose |
+| -------- | ------- | ------- |
+| `BASE_REGISTRY` | — | Prefix for all base images, e.g. `harbor.corp/dockerhub/library/` |
+| `NODE_IMAGE` | `node:22-bookworm-slim` | UI build stage |
+| `RUST_IMAGE` | `rust:1.97-bookworm` | Server build stage (Rust ≥ 1.94) |
+| `RUNTIME_IMAGE` | `debian:bookworm-slim` | Final image; Debian/Ubuntu or openEuler/RHEL-family bases are supported |
+| `NPM_REGISTRY` | npmjs | npm registry for the UI build |
+| `CARGO_REGISTRY` | crates.io | Cargo sparse index used via source replacement |
+| `APT_MIRROR`, `APT_SECURITY_MIRROR` | Debian | Debian mirrors for build tools |
+| `VERSION`, `REVISION` | — | OCI image labels |
+
+### Air-gapped builds
+
+Once one Trove instance runs, it can feed every later build: create the proxy
+repositories `npm-public`, `cargo-public` (crates.io), `debian`
+(`http://deb.debian.org/debian/`) and `debian-security`
+(`http://security.debian.org/debian-security/`), then:
+
+```sh
+docker build \
+  --build-arg BASE_REGISTRY=harbor.corp/dockerhub/library/ \
+  --build-arg NPM_REGISTRY=http://trove.corp/repository/npm-public/ \
+  --build-arg CARGO_REGISTRY=sparse+http://trove.corp/repository/cargo-public/index/ \
+  --build-arg APT_MIRROR=http://trove.corp/repository/debian/ \
+  --build-arg APT_SECURITY_MIRROR=http://trove.corp/repository/debian-security/ \
+  -t harbor.corp/platform/trove:0.3.0 .
+```
+
+Builds take 5–10 minutes from scratch; the dependency layer is cached until
+`Cargo.toml` or `Cargo.lock` change, so code-only changes rebuild in a fraction
+of that.
+
+### openEuler runtime
+
+```sh
+docker build --build-arg RUNTIME_IMAGE=harbor.corp/openeuler/openeuler:24.03-lts -t trove:0.3.0-oe .
+```
+
+The binary is built on Debian bookworm (glibc 2.36) and therefore needs a
+runtime with glibc ≥ 2.36: openEuler 24.03 LTS, Kylin V10 SP3+ with a recent
+glibc, Debian 12+, Ubuntu 22.04+. For openEuler 22.03 (glibc 2.34) also build
+the server stage on an older base.
+
+### Kaniko and Argo Workflows
+
+`deploy/ci/argo-kaniko-build.yaml` is a WorkflowTemplate that clones the
+repository from Forgejo, builds natively per architecture with Kaniko using
+the build arguments above, caches layers in Harbor and pushes the image.
+
+### GitHub releases
+
+Pushing a `v*` tag runs `.github/workflows/release.yml`: native amd64 and
+arm64 builds, merged into a multi-arch `ghcr.io/<owner>/trove` manifest
+(`latest`, `X.Y.Z`, `X.Y`). CI builds the image on every push and smoke-tests
+it (health, UI, non-root user).
+
+### Running
+
+```sh
+docker run -d --name trove -p 8081:8081 -v trove-data:/data \
+  -e TROVE__SECURITY__INITIAL_ADMIN_PASSWORD=change-me-now \
+  -e TROVE__SERVER__BASE_URL=https://trove.corp.example \
+  trove:0.3.0
+```
+
+* Configuration: `TROVE__<SECTION>__<KEY>` variables, or mount a file over
+  `/etc/trove/trove.toml`.
+* The container runs with a read-only root filesystem (`--read-only`); only
+  `/data` must be writable.
+* `HEALTHCHECK` runs `trove healthcheck`; Kubernetes uses `/healthz` and
+  `/readyz`.
+* `docker-compose.yml` starts Trove with PostgreSQL.
 
 ## Kubernetes
 

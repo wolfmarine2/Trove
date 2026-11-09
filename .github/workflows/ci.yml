@@ -57,6 +57,18 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
-          file: deploy/docker/Dockerfile
+          file: Dockerfile
           push: false
+          load: true
           tags: trove:ci
+          cache-from: type=gha,scope=ci
+          cache-to: type=gha,scope=ci,mode=max
+      - name: Smoke test the image
+        run: |
+          docker run -d --name trove -p 8081:8081 -e TROVE__SECURITY__INITIAL_ADMIN_PASSWORD=ci-password-1 trove:ci
+          for i in $(seq 1 30); do curl -fsS http://localhost:8081/healthz && break; sleep 1; done
+          curl -fsS http://localhost:8081/api/v1/status
+          curl -fsS http://localhost:8081/ | grep -q '<title>Trove</title>'
+          docker exec trove trove healthcheck
+          docker exec trove id -u | grep -qx 10001
+          docker logs trove

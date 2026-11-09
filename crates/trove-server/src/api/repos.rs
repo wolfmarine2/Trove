@@ -310,14 +310,14 @@ pub async fn test_remote(
     Json(mut req): Json<RemoteTestReq>,
 ) -> ApiResult<Json<RemoteTestResult>> {
     principal.require_admin()?;
-    if let Some(name) = req.name.as_deref() {
-        if let Some(old) = state.db.get_repo_by_name(name).await?.and_then(|r| r.config.proxy) {
-            if req.proxy.password == MASK {
-                req.proxy.password = old.password;
-            }
-            if req.proxy.outbound.password == MASK {
-                req.proxy.outbound.password = old.outbound.password;
-            }
+    if let Some(name) = req.name.as_deref()
+        && let Some(old) = state.db.get_repo_by_name(name).await?.and_then(|r| r.config.proxy)
+    {
+        if req.proxy.password == MASK {
+            req.proxy.password = old.password;
+        }
+        if req.proxy.outbound.password == MASK {
+            req.proxy.outbound.password = old.outbound.password;
         }
     }
     req.proxy.outbound.validate()?;

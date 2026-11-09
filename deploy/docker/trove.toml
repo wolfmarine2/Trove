@@ -1,0 +1,21 @@
+# Default configuration baked into the container image.
+# Override any key with TROVE__<SECTION>__<KEY> environment variables, or
+# mount your own file at /etc/trove/trove.toml.
+
+[server]
+bind = "0.0.0.0:8081"
+# Persistent state: SQLite database, blobs (filesystem storage), temp files.
+data_dir = "/data"
+# Public URL when running behind a reverse proxy / ingress, e.g.
+# TROVE__SERVER__BASE_URL=https://trove.corp.example
+base_url = ""
+
+[security]
+# Internal public mirror: downloads without an account.
+anonymous_read = true
+# Set TROVE__SECURITY__INITIAL_ADMIN_PASSWORD on first start, otherwise a
+# random password is written to /data/admin.password.
+
+[log]
+level = "info"
+json = true

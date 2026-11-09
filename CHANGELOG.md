@@ -6,6 +6,21 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Container build reworked for air-gapped pipelines: `Dockerfile` at the
+  root, portable across Docker, Podman/Buildah and Kaniko, every base image
+  and package source configurable (`BASE_REGISTRY`, `NPM_REGISTRY`,
+  `CARGO_REGISTRY`, `APT_MIRROR`), cached dependency layer, OCI labels,
+  default config baked in, Debian or openEuler runtime.
+- `trove healthcheck` subcommand used by the image's `HEALTHCHECK`.
+- Release workflow publishing a multi-arch (amd64/arm64) image to GHCR;
+  CI smoke-tests the image.
+- Argo Workflows + Kaniko template (`deploy/ci/argo-kaniko-build.yaml`).
+
+### Fixed
+- The image no longer fails to start without a mounted configuration file.
+- Minimum supported Rust version corrected to 1.94.
+
 ### Changed
 - Positioned as an internal public mirror: anonymous read stays on by default
   (now also in the production Kustomize overlay), and the generated client

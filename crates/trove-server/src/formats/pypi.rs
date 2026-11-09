@@ -325,11 +325,11 @@ fn find_file<'a>(
                 let files = proxy_index(state, repo, project).await?;
                 let Some(f) = files.into_iter().find(|f| f.filename == filename) else { return Ok(None) };
                 let asset = proxy::fetch(state, repo, &path, &f.url, false).await?;
-                if let (Some(a), false) = (&asset, f.sha256.is_empty()) {
-                    if a.blob.sha256 != f.sha256 {
-                        state.db.delete_asset(&repo.id, &path).await?;
-                        return Err(Error::Upstream(format!("checksum mismatch for {filename}")));
-                    }
+                if let (Some(a), false) = (&asset, f.sha256.is_empty())
+                    && a.blob.sha256 != f.sha256
+                {
+                    state.db.delete_asset(&repo.id, &path).await?;
+                    return Err(Error::Upstream(format!("checksum mismatch for {filename}")));
                 }
                 Ok(asset)
             }
@@ -405,17 +405,17 @@ async fn upload(ctx: &mut Ctx) -> Result<Response> {
         return Err(Error::bad_request("unsupported :action"));
     }
     let Some((asset, path)) = stored else { return Err(Error::bad_request("missing 'content' file")) };
-    if let Some(expected) = fields.get("sha256_digest").filter(|s| !s.is_empty()) {
-        if expected.to_ascii_lowercase() != asset.blob.sha256 {
-            ctx.state.db.delete_asset(&ctx.repo.id, &path).await?;
-            return Err(Error::bad_request("sha256_digest does not match uploaded content"));
-        }
+    if let Some(expected) = fields.get("sha256_digest").filter(|s| !s.is_empty())
+        && expected.to_ascii_lowercase() != asset.blob.sha256
+    {
+        ctx.state.db.delete_asset(&ctx.repo.id, &path).await?;
+        return Err(Error::bad_request("sha256_digest does not match uploaded content"));
     }
-    if let Some(expected) = fields.get("md5_digest").filter(|s| !s.is_empty()) {
-        if expected.to_ascii_lowercase() != asset.blob.md5 {
-            ctx.state.db.delete_asset(&ctx.repo.id, &path).await?;
-            return Err(Error::bad_request("md5_digest does not match uploaded content"));
-        }
+    if let Some(expected) = fields.get("md5_digest").filter(|s| !s.is_empty())
+        && expected.to_ascii_lowercase() != asset.blob.md5
+    {
+        ctx.state.db.delete_asset(&ctx.repo.id, &path).await?;
+        return Err(Error::bad_request("md5_digest does not match uploaded content"));
     }
     // Re-attach attributes now that every field is known (field order varies by client).
     let attrs = json!({

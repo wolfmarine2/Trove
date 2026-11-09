@@ -1,22 +1,41 @@
-# Quick start with PostgreSQL: `docker compose up -d`, then open http://localhost:8081
-# The admin password is printed in the logs on first start unless set below.
+# Trove with PostgreSQL.
+#
+#   docker compose up -d --build
+#   open http://localhost:8081   (admin / the password below, change it after signing in)
+#
+# Single container with SQLite instead:
+#   docker run -d --name trove -p 8081:8081 -v trove-data:/data \
+#     -e TROVE__SECURITY__INITIAL_ADMIN_PASSWORD=change-me-now trove:latest
 services:
   trove:
     build:
       context: .
-      dockerfile: deploy/docker/Dockerfile
+      dockerfile: Dockerfile
+      # Air-gapped builds: point every source at internal mirrors.
+      # args:
+      #   BASE_REGISTRY: harbor.corp/dockerhub/library/
+      #   NPM_REGISTRY: http://trove.corp/repository/npm-public/
+      #   CARGO_REGISTRY: sparse+http://trove.corp/repository/cargo-public/index/
+      #   APT_MIRROR: http://trove.corp/repository/debian/
     image: trove:latest
     ports:
       - "8081:8081"
     environment:
       TROVE__DATABASE__URL: postgres://trove:trove@postgres:5432/trove
       TROVE__SECURITY__INITIAL_ADMIN_PASSWORD: change-me-now
+      # Public URL clients use (required behind a reverse proxy):
+      # TROVE__SERVER__BASE_URL: https://trove.corp.example
+      # Default outbound proxy for all proxy repositories:
+      # TROVE__HTTP_CLIENT__PROXY: socks5h://egress.corp:1080
     volumes:
       - trove-data:/data
     depends_on:
       postgres:
         condition: service_healthy
     restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
 
   postgres:
     image: postgres:16-alpine
