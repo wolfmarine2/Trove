@@ -10,7 +10,7 @@
 Trove is a self-hosted universal artifact repository, in the spirit of Sonatype
 Nexus Repository, built to be a company's **internal public mirror**: one
 server that caches public registries (Maven Central, npm, PyPI, crates.io,
-Docker Hub, Ubuntu, openEuler, …), hosts in-house packages and combines both
+Docker Hub, Ubuntu, openEuler, GitHub, agent-skill marketplaces, …), hosts in-house packages and combines both
 behind a single URL per ecosystem.
 
 Downloads need no account by default, so build machines, CI runners and
@@ -30,6 +30,8 @@ box and scales out on PostgreSQL (or openGauss) with S3-compatible storage.
 | Docker / OCI | — (push planned) | ✓ Docker Hub, GHCR, Quay, Harbor…, token auth, digest-verified | ✓ | Registry API v2 (docker, containerd) |
 | APT    | — | ✓ Debian, Ubuntu, Kylin, UOS; by-hash aware | — | apt 2.7 |
 | YUM / DNF | — | ✓ openEuler, RHEL family, Fedora, EPEL | — | Registry layout (dnf) |
+| Git    | — | ✓ GitHub, Gitee, GitLab…: mirrored clones, source archives, raw files | — | git 2.43, pnpm `github:` deps, DeepSeek Harness / Claude Code plugins |
+| Skills | — | ✓ SkillHub (skillhub.cn), ClawHub and compatible skill marketplaces | — | ClawHub HTTP API, curl |
 
 ## Why
 

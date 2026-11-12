@@ -29,12 +29,15 @@
 
 ## Data model
 
-* A **repository** has a format (maven, npm, pypi, cargo, raw), a kind
+* A **repository** has a format (maven, npm, pypi, cargo, raw, docker, apt,
+  yum, git, skills), a kind
   (hosted, proxy, group) and a JSON config (write policy, proxy remote,
   group members, Maven version policy).
 * An **asset** is a path inside a repository pointing at a **blob** by SHA-256.
   Format-specific attributes (upstream URL, cache timestamps, Python
   `requires_python`, crate description) live in a JSON column.
+* Git proxies are the exception to blob storage: each upstream repository is
+  a bare mirror under `git.mirror_dir`, served by `git upload-pack`.
 * Deleting or overwriting an asset never deletes its blob directly. The
   garbage collector removes blobs no asset references, after a grace period,
   under an exclusive lock that uploads respect.

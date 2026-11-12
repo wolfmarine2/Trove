@@ -25,6 +25,8 @@
   --f-docker: #0e6a86;
   --f-apt: #77216f;
   --f-yum: #2f6b35;
+  --f-git: #a8442a;
+  --f-skills: #4a3f8f;
 
   --sans: "IBM Plex Sans", system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
@@ -418,6 +420,14 @@ select:focus-visible {
 .format-yum,
 .rule-yum {
   --fc: var(--f-yum);
+}
+.format-git,
+.rule-git {
+  --fc: var(--f-git);
+}
+.format-skills,
+.rule-skills {
+  --fc: var(--f-skills);
 }
 
 .kind {

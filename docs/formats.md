@@ -263,3 +263,100 @@ curl -u admin:<TOKEN> -X DELETE https://trove.example.com/repository/raw-hosted/
 ```
 
 `GET` on a directory path ending in `/` returns an HTML listing.
+
+### Mutable files in a raw proxy
+
+Raw proxies treat files as immutable by default. For files that change under
+the same URL — a plugin marketplace index on a branch, `latest/` download
+links — set **File revalidation** (`content_max_age_secs`): after that time
+Trove asks the remote with `If-None-Match`/`If-Modified-Since` and downloads
+only when the file changed. Example: a raw proxy of
+`https://raw.githubusercontent.com/` with a 10-minute revalidation.
+
+## Git (GitHub, Gitee, GitLab, Gitea)
+
+A Git proxy keeps a bare mirror (branches and tags) of every repository a
+client asks for and serves it over smart HTTP. Mirrors are refreshed with
+`git fetch` after the repository's refresh interval (default 30 minutes); if
+the remote is unreachable the last mirrored state is served. Pushes are
+refused. Remote: the root that repository paths are appended to, e.g.
+`https://github.com/` (repository `github` below).
+
+```sh
+# Route every GitHub clone through Trove (also what pnpm/npm use for
+# "github:" dependencies, and what plugin installers call)
+git config --global url."http://trove.example.com/repository/github/".insteadOf "https://github.com/"
+git clone https://github.com/owner/repo.git
+```
+
+Besides the Git protocol, the mirror answers without contacting the remote:
+
+| Path | Equivalent |
+| ---- | ---------- |
+| `owner/repo/archive/<ref>.tar.gz` (`.zip`, `.tar`) | `github.com/owner/repo/archive/…` |
+| `owner/repo/tar.gz/<ref>`, `owner/repo/zip/<ref>` | `codeload.github.com/…` |
+| `owner/repo/raw/<ref>/<path>` | `raw.githubusercontent.com/owner/repo/<ref>/<path>` |
+
+For nested groups (GitLab) separate the project with `/-/`:
+`group/sub/project/-/raw/main/README.md`. Raw files are served with
+`nosniff` and a sandboxing CSP. Admins evict a mirror with
+`DELETE /repository/github/owner/repo`; deleting the repository removes all
+of its mirrors.
+
+**DeepSeek Harness plugins.** `dsh plugin add` runs `pnpm add` inside the
+profile (`~/.dsh/profiles/<profile>`):
+
+```sh
+# npm-published plugins: point the profile at an npm proxy
+echo "registry=http://trove.example.com/repository/npm/" > ~/.dsh/profiles/web/.npmrc
+dsh plugin --profile web add dsh-plugin-example
+# GitHub-hosted plugins: with the insteadOf rule above
+dsh plugin --profile web add github:owner/dsh-plugin
+# …or without a global rule
+dsh plugin --profile web add git+http://trove.example.com/repository/github/owner/dsh-plugin.git
+```
+
+With GitHub unreachable, pnpm resolves `github:` dependencies through
+`git ls-remote`/`git clone`, which the insteadOf rule sends to Trove (verified
+with pnpm 10). Marketplace front-ends that download indexes from
+`raw.githubusercontent.com`, `cdn.jsdelivr.net` or the GitHub API cannot be
+redirected by a Git setting; give them the `raw/` URL above or a raw proxy
+with file revalidation if they accept a custom index URL.
+
+**Claude Code plugin marketplaces** are Git repositories:
+`/plugin marketplace add http://trove.example.com/repository/github/owner/marketplace.git`.
+
+## Skills (SkillHub, ClawHub)
+
+Proxy for agent-skill marketplaces that speak the ClawHub HTTP API:
+
+| Marketplace | Remote URL |
+| ----------- | ---------- |
+| SkillHub (skillhub.cn, Tencent) | `https://lightmake.site/` |
+| ClawHub | `https://clawhub.ai/` |
+| Self-hosted ClawHub-compatible registries | their base URL |
+
+Every `GET` is forwarded with its query string and cached. Pinned downloads
+(`api/v1/download?slug=<slug>&version=<v>`, package artifacts, `.zip`/`.tgz`)
+are immutable and appear in **Browse** as `api/v1/download/<slug>/<version>`;
+searches, listings, skill details and "latest" downloads are refreshed after
+the cache time and served stale while the remote is down. URLs of the remote
+inside JSON responses are rewritten to Trove.
+
+```sh
+export CLAWHUB_REGISTRY=http://trove.example.com/repository/skillhub
+clawhub search pdf
+clawhub install <slug>
+
+# any tool / script
+curl "http://trove.example.com/repository/skillhub/api/v1/search?q=pdf&limit=10"
+curl -o skill.zip "http://trove.example.com/repository/skillhub/api/v1/download?slug=<slug>&version=<version>"
+unzip skill.zip -d ~/.claude/skills/<slug>
+```
+
+Limitations: the proxy is read-only (no login or publish); download links in
+responses that point at another host (e.g. object storage) are passed through
+unchanged; skills that a marketplace delivers from GitHub need the Git proxy
+as well. SkillHub's own `skillhub` CLI is installed from Tencent COS; use it
+through Trove only if it lets you set the registry URL, otherwise use a
+ClawHub-compatible CLI or the HTTP API above.

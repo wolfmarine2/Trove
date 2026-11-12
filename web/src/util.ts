@@ -123,6 +123,11 @@ export function clientSnippets(repo: Repository, anonymousRead: boolean): Snippe
       return [
         { file: ".npmrc", code: readAuth ? `registry=${url}/\n//${host}/:_authToken=<TOKEN>` : `registry=${url}/` },
         { file: "shell", code: `npm config set registry ${url}/\npnpm config set registry ${url}/\nyarn config set npmRegistryServer ${url}/` },
+        {
+          file: "~/.dsh/profiles/<profile>/.npmrc",
+          code: `# DeepSeek Harness installs npm plugins with pnpm inside the profile
+registry=${url}/${readAuth ? `\n//${host}/:_authToken=<TOKEN>` : ""}`,
+        },
       ];
     case "pypi": {
       const index = readAuth
@@ -222,6 +227,54 @@ gpgcheck=1${readAuth ? "\nusername=your-user\npassword=<TOKEN>" : ""}`,
         },
         { file: "shell", code: `dnf clean all && dnf makecache --repo ${repo.name}` },
       ];
+    case "git": {
+      const auth = readAuth ? url.replace("://", "://your-user:<TOKEN>@") : url;
+      const remote = (repo.config.proxy?.remote_url ?? "https://github.com/").replace(/\/?$/, "/");
+      return [
+        {
+          file: "shell",
+          code: `# Send every ${remote} clone through Trove (git, pnpm/npm "github:" deps, plugin installers)
+git config --global url."${auth}/".insteadOf "${remote}"
+git clone ${remote}owner/repo.git`,
+        },
+        {
+          file: "DeepSeek Harness",
+          code: `# GitHub-hosted plugin (uses the insteadOf rule above)
+dsh plugin --profile web add github:owner/repo
+# or explicitly, without the global rule
+dsh plugin --profile web add git+${auth}/owner/repo.git`,
+        },
+        {
+          file: "Claude Code",
+          code: `/plugin marketplace add ${auth}/owner/marketplace.git`,
+        },
+        {
+          file: "shell",
+          code: `# Source archive and single files, served from the mirror
+curl -LO ${url}/owner/repo/archive/v1.0.0.tar.gz
+curl ${url}/owner/repo/raw/main/.claude-plugin/marketplace.json`,
+        },
+      ];
+    }
+    case "skills": {
+      const auth = readAuth ? " -u your-user:<TOKEN>" : "";
+      return [
+        {
+          file: "shell",
+          code: `# ClawHub-compatible CLIs
+export CLAWHUB_REGISTRY=${url}
+clawhub search pdf
+clawhub install <slug>`,
+        },
+        {
+          file: "shell",
+          code: `# Plain HTTP: search, then download a skill package (zip)
+curl${auth} "${url}/api/v1/search?q=pdf&limit=10"
+curl${auth} -o skill.zip "${url}/api/v1/download?slug=<slug>&version=<version>"
+unzip skill.zip -d ~/.claude/skills/<slug>`,
+        },
+      ];
+    }
     case "raw":
     default: {
       const download = `curl -O ${readAuth ? "-u your-user:<TOKEN> " : ""}${url}/${canPublish ? "releases/app.tar.gz" : "path/to/file"}`;

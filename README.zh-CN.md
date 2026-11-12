@@ -28,6 +28,8 @@ crates.io、Docker Hub、Ubuntu、openEuler 等），同时托管内部发布的
 | Docker / OCI | —（推送计划中） | ✓ Docker Hub、GHCR、Quay、Harbor 等，支持 token 鉴权，校验摘要 | ✓ | Registry API v2（docker、containerd） |
 | APT | — | ✓ Debian、Ubuntu、麒麟、统信 UOS，支持 by-hash | — | apt 2.7 |
 | YUM / DNF | — | ✓ openEuler、RHEL 系、Fedora、EPEL | — | 仓库目录布局（dnf） |
+| Git | — | ✓ GitHub、Gitee、GitLab 等：镜像克隆、源码包、单文件 | — | git 2.43、pnpm `github:` 依赖、DeepSeek Harness / Claude Code 插件 |
+| Skills | — | ✓ SkillHub（skillhub.cn）、ClawHub 及兼容的技能市场 | — | ClawHub HTTP API、curl |
 
 ## 特点
 

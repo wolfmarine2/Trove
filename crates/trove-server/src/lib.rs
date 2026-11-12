@@ -70,6 +70,7 @@ pub async fn serve(cfg: Config) -> anyhow::Result<()> {
     let bind = cfg.server.bind.clone();
     let state = init(cfg).await?;
     gc::spawn_periodic(state.clone(), Duration::from_secs(6 * 3600));
+    check_git(&state).await;
     let listener = tokio::net::TcpListener::bind(&bind).await?;
     tracing::info!(
         version = env!("CARGO_PKG_VERSION"),
@@ -79,6 +80,24 @@ pub async fn serve(cfg: Config) -> anyhow::Result<()> {
     );
     axum::serve(listener, router(state)).with_graceful_shutdown(shutdown_signal()).await?;
     Ok(())
+}
+
+/// Git proxy repositories need the `git` binary; say so early if it is missing.
+async fn check_git(state: &AppState) {
+    let has_git_repos = state
+        .db
+        .list_repos()
+        .await
+        .map(|repos| repos.iter().any(|r| r.format == trove_core::model::Format::Git))
+        .unwrap_or(false);
+    let found = tokio::process::Command::new(&state.cfg.git.binary)
+        .arg("--version")
+        .output()
+        .await
+        .is_ok_and(|o| o.status.success());
+    if !found && has_git_repos {
+        tracing::warn!(binary = %state.cfg.git.binary, "git is not installed: Git proxy repositories will fail");
+    }
 }
 
 async fn shutdown_signal() {

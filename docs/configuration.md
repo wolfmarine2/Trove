@@ -30,6 +30,9 @@ The most important settings:
 | `http_client.no_proxy` | — | Hosts bypassing `http_client.proxy`. |
 | `http_client.ca_bundle` | — | Extra trusted CAs (PEM). |
 | `log.json` | `false` | JSON lines for log shippers. |
+| `git.binary` | `git` | Used by Git proxy repositories (the container image includes it). |
+| `git.mirror_dir` | `<data_dir>/git` | Bare mirrors; must be local disk even with S3 blob storage. |
+| `git.fetch_timeout_secs` | `3600` | Upper bound for one clone or fetch from a remote. |
 
 ## Outbound proxies
 

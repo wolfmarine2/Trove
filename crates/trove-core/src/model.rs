@@ -49,6 +49,8 @@ string_enum!(
         Docker => "docker",
         Apt => "apt",
         Yum => "yum",
+        Git => "git",
+        Skills => "skills",
     }
 );
 
@@ -56,7 +58,7 @@ impl Format {
     /// Repository kinds implemented for this format.
     pub fn supported_kinds(&self) -> &'static [RepoKind] {
         match self {
-            Format::Apt | Format::Yum => &[RepoKind::Proxy],
+            Format::Apt | Format::Yum | Format::Git | Format::Skills => &[RepoKind::Proxy],
             Format::Docker => &[RepoKind::Proxy, RepoKind::Group],
             _ => &[RepoKind::Hosted, RepoKind::Proxy, RepoKind::Group],
         }
@@ -135,6 +137,11 @@ pub struct ProxyConfig {
     pub invalidated_at: i64,
     /// How this repository reaches its remote.
     pub outbound: OutboundProxy,
+    /// When non-zero, cached *content* is also revalidated after this many
+    /// seconds (conditional request, so unchanged files are not downloaded
+    /// again). For raw proxies of mutable files, e.g. a marketplace index on a
+    /// branch. Zero keeps the default: content is immutable.
+    pub content_max_age_secs: u64,
 }
 
 /// Outbound proxy choice for a proxy repository.

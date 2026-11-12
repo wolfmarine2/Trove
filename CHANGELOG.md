@@ -6,9 +6,24 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.3.0] - 2026-11-09
+## [0.3.0] - 2026-11-11
 
 ### Added
+- Git proxy repositories (`git` format): pull-through mirrors of GitHub,
+  Gitee, GitLab or Gitea repositories over smart HTTP, refreshed with
+  `git fetch` and served stale when the remote is down; source archives
+  (`archive/<ref>.tar.gz`, codeload-style `tar.gz/<ref>`) and single files
+  (`raw/<ref>/<path>`) from the mirror. Covers pnpm/npm `github:`
+  dependencies, DeepSeek Harness plugins and Claude Code plugin marketplaces
+  via `url.<trove>.insteadOf`. New `[git]` configuration section; the
+  container image now includes git.
+- Skills proxy repositories (`skills` format) for agent-skill marketplaces
+  speaking the ClawHub HTTP API: SkillHub (skillhub.cn) and ClawHub. Pinned
+  skill downloads are cached forever, searches and listings refreshed after
+  the cache time, remote URLs in JSON rewritten to Trove.
+- Raw proxies: optional file revalidation (`content_max_age_secs`) for
+  mutable files such as marketplace indexes on a branch.
+- DeepSeek Harness `.npmrc` snippet for npm repositories.
 - Per-repository outbound proxy for proxy repositories: server default,
   direct, or a custom HTTP, HTTPS, SOCKS5 or SOCKS5h proxy with credentials
   and a bypass list. Docker token requests follow the same route.

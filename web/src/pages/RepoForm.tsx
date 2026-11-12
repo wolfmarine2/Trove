@@ -25,6 +25,8 @@ const DEFAULT_REMOTES: Record<Format, string> = {
   docker: "https://registry-1.docker.io",
   apt: "http://archive.ubuntu.com/ubuntu/",
   yum: "https://repo.openeuler.org/openEuler-24.03-LTS/OS/x86_64/",
+  git: "https://github.com/",
+  skills: "https://lightmake.site/",
   raw: "",
 };
 
@@ -58,6 +60,7 @@ export function RepoForm({ existing, onSaved }: { existing?: Repository; onSaved
   const [remoteUser, setRemoteUser] = useState(existing?.config.proxy?.username ?? "");
   const [remotePassword, setRemotePassword] = useState(existing?.config.proxy?.password ?? "");
   const [offline, setOffline] = useState(existing?.config.proxy?.offline ?? false);
+  const [contentMaxAgeMin, setContentMaxAgeMin] = useState(Math.round((existing?.config.proxy?.content_max_age_secs ?? 0) / 60));
   const ob = existing?.config.proxy?.outbound;
   const [obMode, setObMode] = useState<OutboundMode>(ob?.mode ?? "inherit");
   const [obUrl, setObUrl] = useState(ob?.url ?? "");
@@ -97,6 +100,7 @@ export function RepoForm({ existing, onSaved }: { existing?: Repository; onSaved
     username: remoteUser,
     password: remotePassword,
     offline,
+    content_max_age_secs: format === "raw" ? Math.max(0, contentMaxAgeMin) * 60 : 0,
     outbound: { mode: obMode, url: obUrl.trim(), username: obUser, password: obPassword, no_proxy: obNoProxy },
   });
 
@@ -250,9 +254,25 @@ export function RepoForm({ existing, onSaved }: { existing?: Repository; onSaved
               className="mono"
             />
           </Field>
-          <Field label={t("form.maxAge")} help={t("form.maxAgeHelp")} htmlFor="maxage">
+          <Field
+            label={t(format === "git" ? "form.maxAgeGit" : "form.maxAge")}
+            help={t(format === "git" ? "form.maxAgeGitHelp" : "form.maxAgeHelp")}
+            htmlFor="maxage"
+          >
             <input id="maxage" type="number" min={1} value={maxAgeMin} onChange={(e) => setMaxAgeMin(Number(e.target.value))} />
           </Field>
+          {format === "raw" && (
+            <Field label={t("form.contentMaxAge")} help={t("form.contentMaxAgeHelp")} htmlFor="cmaxage">
+              <input
+                id="cmaxage"
+                type="number"
+                min={0}
+                value={contentMaxAgeMin}
+                onChange={(e) => setContentMaxAgeMin(Number(e.target.value))}
+              />
+            </Field>
+          )}
+          {(format === "git" || format === "skills") && <p className="help">{t(`form.remoteHint.${format}`)}</p>}
           <div className="two">
             <Field label={t("form.remoteUser")} htmlFor="ruser">
               <input id="ruser" value={remoteUser} onChange={(e) => setRemoteUser(e.target.value)} autoComplete="off" />

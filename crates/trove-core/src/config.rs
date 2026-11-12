@@ -19,6 +19,7 @@ pub struct Config {
     pub http_client: HttpClientConfig,
     pub ui: UiConfig,
     pub log: LogConfig,
+    pub git: GitConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -145,6 +146,26 @@ impl Default for HttpClientConfig {
     }
 }
 
+/// Git proxy repositories keep bare mirrors on local disk and run the `git`
+/// binary to serve them.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct GitConfig {
+    /// The git executable.
+    pub binary: String,
+    /// Where mirrors live. Empty means `<data_dir>/git`. Must be a local disk
+    /// even when blobs are stored in S3.
+    pub mirror_dir: String,
+    /// Upper bound for one clone or fetch from upstream, in seconds.
+    pub fetch_timeout_secs: u64,
+}
+
+impl Default for GitConfig {
+    fn default() -> Self {
+        Self { binary: "git".into(), mirror_dir: String::new(), fetch_timeout_secs: 3600 }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default, deny_unknown_fields)]
 pub struct UiConfig {
@@ -191,6 +212,14 @@ impl Config {
             format!("sqlite://{}?mode=rwc", self.server.data_dir.join("trove.db").display())
         } else {
             self.database.url.clone()
+        }
+    }
+
+    pub fn git_mirror_dir(&self) -> PathBuf {
+        if self.git.mirror_dir.is_empty() {
+            self.server.data_dir.join("git")
+        } else {
+            PathBuf::from(&self.git.mirror_dir)
         }
     }
 

@@ -1,6 +1,7 @@
 //! Upstream fetching with caching for proxy repositories.
 //!
-//! * Content files are immutable: once cached they are served forever.
+//! * Content files are immutable: once cached they are served forever (unless
+//!   the repository sets `content_max_age_secs`).
 //! * Metadata documents are refreshed after `metadata_max_age_secs`, using
 //!   conditional requests (`If-None-Match` / `If-Modified-Since`).
 //! * When the upstream is unreachable, stale cached content is served.
@@ -55,12 +56,16 @@ fn chain(e: &dyn std::error::Error) -> String {
 }
 
 fn is_fresh(repo: &Repository, asset: &Asset, opts: &FetchOpts<'_>) -> bool {
-    if !opts.metadata {
+    let content_max_age = repo.proxy().map(|p| p.content_max_age_secs).unwrap_or(0);
+    // Content verified against a digest can never change, whatever the TTL.
+    if !opts.metadata && (content_max_age == 0 || opts.expect_sha256.is_some()) {
         return true;
     }
-    let max_age =
+    let max_age = if opts.metadata {
         repo.proxy().map(|p| p.metadata_max_age_secs).filter(|v| *v > 0).unwrap_or(DEFAULT_METADATA_MAX_AGE_SECS)
-            as i64;
+    } else {
+        content_max_age
+    } as i64;
     let cached_at = asset.attributes.get("cached_at").and_then(Value::as_i64).unwrap_or(asset.updated_at);
     let invalidated_at = repo.proxy().map(|p| p.invalidated_at).unwrap_or(0).max(opts.stale_before.unwrap_or(0));
     cached_at > invalidated_at && now_millis() - cached_at < max_age * 1000

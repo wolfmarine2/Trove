@@ -271,6 +271,9 @@ pub async fn remove(
         return Err(Error::conflict(format!("repository is a member of group(s): {}", referencing.join(", "))).into());
     }
     state.db.delete_repo(&repo.id).await?;
+    if repo.format == Format::Git {
+        crate::formats::git::remove_mirrors(&state, &repo);
+    }
     audit::record(&state, &principal, &headers, "repository.delete", &repo.name, "").await;
     Ok(StatusCode::NO_CONTENT)
 }

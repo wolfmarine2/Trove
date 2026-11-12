@@ -93,16 +93,17 @@ LABEL org.opencontainers.image.title="Trove" \
       org.opencontainers.image.licenses="Apache-2.0" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${REVISION}"
-# CA certificates for HTTPS remotes; works on Debian/Ubuntu and openEuler/RHEL bases.
+# CA certificates for HTTPS remotes and git for Git proxy repositories; works
+# on Debian/Ubuntu and openEuler/RHEL bases.
 RUN set -eu; \
     if command -v apt-get >/dev/null 2>&1; then \
-        apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+        apt-get update && apt-get install -y --no-install-recommends ca-certificates git \
         && rm -rf /var/lib/apt/lists/*; \
         groupadd --system --gid 10001 trove; \
         useradd --system --uid 10001 --gid 10001 --home-dir /data --no-create-home --shell /usr/sbin/nologin trove; \
     else \
         PM=$(command -v dnf || command -v yum || command -v microdnf); \
-        $PM install -y ca-certificates; \
+        $PM install -y ca-certificates git-core || $PM install -y ca-certificates git; \
         command -v useradd >/dev/null 2>&1 || $PM install -y shadow-utils || $PM install -y shadow; \
         $PM clean all; \
         groupadd -r -g 10001 trove; \

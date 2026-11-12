@@ -1043,3 +1043,285 @@ async fn raw_private_repositories_uploads_and_disposition() {
     let cfg: Value = anon("/repository/crates-priv/index/config.json").await.unwrap().json().await.unwrap();
     assert_eq!(cfg["auth-required"], true);
 }
+
+/// Run a git command isolated from the developer's configuration and proxies.
+fn git(dir: &std::path::Path, args: &[&str]) -> String {
+    let out = std::process::Command::new("git")
+        .args(args)
+        .current_dir(dir)
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_AUTHOR_NAME", "t")
+        .env("GIT_AUTHOR_EMAIL", "t@example.com")
+        .env("GIT_COMMITTER_NAME", "t")
+        .env("GIT_COMMITTER_EMAIL", "t@example.com")
+        .env_remove("http_proxy")
+        .env_remove("https_proxy")
+        .env_remove("HTTP_PROXY")
+        .env_remove("HTTPS_PROXY")
+        .env_remove("ALL_PROXY")
+        .env_remove("all_proxy")
+        .output()
+        .expect("git is installed");
+    assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+    String::from_utf8_lossy(&out.stdout).into_owned()
+}
+
+impl Server {
+    /// Publish a bare repository as a dumb-HTTP Git remote in a raw repository.
+    async fn publish_dumb_git(&self, raw_repo: &str, bare: &std::path::Path, name: &str) {
+        git(bare, &["update-server-info"]);
+        let mut stack = vec![bare.to_path_buf()];
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).unwrap() {
+                let p = entry.unwrap().path();
+                if p.is_dir() {
+                    stack.push(p);
+                    continue;
+                }
+                let rel = p.strip_prefix(bare).unwrap().to_string_lossy().replace('\\', "/");
+                let r = self
+                    .admin(reqwest::Method::PUT, &format!("/repository/{raw_repo}/{name}.git/{rel}"))
+                    .body(std::fs::read(&p).unwrap())
+                    .send()
+                    .await
+                    .unwrap();
+                assert!(r.status().is_success(), "{rel}: {}", r.status());
+            }
+        }
+    }
+}
+
+// Multi-threaded: the test drives the synchronous `git` client while the server runs.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn git_proxy_mirrors_clones_archives_and_raw_files() {
+    let s = Server::start().await;
+    s.create_repo(
+        json!({"name": "forge", "format": "raw", "kind": "hosted", "config": {"write_policy": "allow_redeploy"}}),
+    )
+    .await;
+    let work = tempfile::tempdir().unwrap();
+    let src = work.path().join("src");
+    std::fs::create_dir(&src).unwrap();
+    git(&src, &["init", "-q", "-b", "main"]);
+    std::fs::write(src.join("README.md"), "v1\n").unwrap();
+    std::fs::create_dir_all(src.join(".claude-plugin")).unwrap();
+    std::fs::write(src.join(".claude-plugin/marketplace.json"), r#"{"name":"m","plugins":[]}"#).unwrap();
+    std::fs::write(src.join("package.json"), r#"{"name":"dsh-plugin-demo","version":"1.0.0"}"#).unwrap();
+    git(&src, &["add", "."]);
+    git(&src, &["commit", "-q", "-m", "one"]);
+    git(&src, &["tag", "v1.0.0"]);
+    let bare = work.path().join("plugin.git");
+    git(work.path(), &["clone", "-q", "--bare", src.to_str().unwrap(), bare.to_str().unwrap()]);
+    s.publish_dumb_git("forge", &bare, "acme/plugin").await;
+
+    s.create_repo(json!({"name": "github", "format": "git", "kind": "proxy", "config": {"proxy": {
+        "remote_url": s.url("/repository/forge/"), "metadata_max_age_secs": 1,
+        "outbound": {"mode": "direct"}}}}))
+        .await;
+    let base = s.url("/repository/github");
+
+    // Clone through the proxy (smart HTTP served from the mirror).
+    let clone = work.path().join("clone");
+    git(work.path(), &["clone", "-q", &format!("{base}/acme/plugin.git"), clone.to_str().unwrap()]);
+    assert_eq!(std::fs::read_to_string(clone.join("README.md")).unwrap(), "v1\n");
+    assert_eq!(git(&clone, &["rev-parse", "--abbrev-ref", "HEAD"]).trim(), "main");
+    assert!(git(&clone, &["tag"]).contains("v1.0.0"));
+    // url.insteadOf rewriting, as clients configure it for github.com.
+    let shallow = work.path().join("shallow");
+    git(
+        work.path(),
+        &[
+            "-c",
+            &format!("url.{base}/.insteadOf=https://github.example/"),
+            "clone",
+            "-q",
+            "--depth",
+            "1",
+            "https://github.example/acme/plugin",
+            shallow.to_str().unwrap(),
+        ],
+    );
+    assert!(shallow.join(".claude-plugin/marketplace.json").exists());
+
+    // Raw files and source archives.
+    let get = |p: String| s.client.get(format!("{base}/{p}")).send();
+    let r = get("acme/plugin/raw/main/.claude-plugin/marketplace.json".into()).await.unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    assert_eq!(r.headers()["x-content-type-options"], "nosniff");
+    assert_eq!(r.text().await.unwrap(), r#"{"name":"m","plugins":[]}"#);
+    assert_eq!(get("acme/plugin/raw/main/missing.txt".into()).await.unwrap().status(), StatusCode::NOT_FOUND);
+    let tgz = get("acme/plugin/archive/v1.0.0.tar.gz".into()).await.unwrap();
+    assert_eq!(tgz.status(), StatusCode::OK);
+    assert_eq!(tgz.headers()["content-type"], "application/gzip");
+    let bytes = tgz.bytes().await.unwrap();
+    let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(&bytes[..]));
+    let names: Vec<String> =
+        archive.entries().unwrap().map(|e| e.unwrap().path().unwrap().to_string_lossy().into_owned()).collect();
+    assert!(names.contains(&"plugin-1.0.0/package.json".to_string()), "{names:?}");
+    let zip = get("acme/plugin/zip/main".into()).await.unwrap();
+    assert_eq!(zip.headers()["content-type"], "application/zip");
+    assert!(zip.bytes().await.unwrap().starts_with(b"PK"));
+
+    // Upstream moves on; after the max age the mirror refreshes.
+    std::fs::write(src.join("README.md"), "v2\n").unwrap();
+    git(&src, &["commit", "-q", "-am", "two"]);
+    git(&src, &["push", "-q", bare.to_str().unwrap(), "main"]);
+    s.publish_dumb_git("forge", &bare, "acme/plugin").await;
+    let head = git(&src, &["rev-parse", "HEAD"]).trim().to_string();
+    tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+    git(&clone, &["pull", "-q", "--ff-only"]);
+    assert_eq!(std::fs::read_to_string(clone.join("README.md")).unwrap(), "v2\n");
+    // Pinned commits are immutable and cacheable.
+    let r = get(format!("acme/plugin/raw/{head}/README.md")).await.unwrap();
+    assert!(r.headers()["cache-control"].to_str().unwrap().contains("immutable"));
+    assert_eq!(r.text().await.unwrap(), "v2\n");
+
+    // Pushes are refused; unknown repositories are 404.
+    let push = s.client.get(format!("{base}/acme/plugin.git/info/refs?service=git-receive-pack")).send().await.unwrap();
+    assert_eq!(push.status(), StatusCode::FORBIDDEN);
+    let missing = s.client.get(format!("{base}/acme/nope.git/info/refs?service=git-upload-pack")).send().await.unwrap();
+    assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+    let bad = s.client.get(format!("{base}/acme/plugin/archive/--output=x.tar.gz")).send().await.unwrap();
+    assert_eq!(bad.status(), StatusCode::BAD_REQUEST);
+
+    // The remote disappears: the mirror keeps serving the last state.
+    let r = s.admin(reqwest::Method::DELETE, "/repository/forge/acme/").send().await.unwrap();
+    assert_eq!(r.status(), StatusCode::NO_CONTENT);
+    tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+    let again = work.path().join("again");
+    git(work.path(), &["clone", "-q", &format!("{base}/acme/plugin.git"), again.to_str().unwrap()]);
+    assert_eq!(std::fs::read_to_string(again.join("README.md")).unwrap(), "v2\n");
+
+    // Admins can evict a mirror; deleting the repository removes all mirrors.
+    let anon_delete = s.client.delete(format!("{base}/acme/plugin")).send().await.unwrap();
+    assert_eq!(anon_delete.status(), StatusCode::UNAUTHORIZED);
+    let r = s.admin(reqwest::Method::DELETE, "/repository/github/acme/plugin").send().await.unwrap();
+    assert_eq!(r.status(), StatusCode::NO_CONTENT);
+    let gone = s.client.get(format!("{base}/acme/plugin.git/info/refs?service=git-upload-pack")).send().await.unwrap();
+    assert_eq!(gone.status(), StatusCode::NOT_FOUND);
+    let r = s.admin(reqwest::Method::DELETE, "/api/v1/repositories/github").send().await.unwrap();
+    assert_eq!(r.status(), StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn skills_marketplace_proxy_caches_downloads_and_rewrites_urls() {
+    // A tiny ClawHub-style upstream.
+    use axum::extract::{Query, State as AxState};
+    use std::collections::HashMap;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    #[derive(Clone)]
+    struct Up {
+        base: Arc<std::sync::OnceLock<String>>,
+        hits: Arc<AtomicUsize>,
+        down: Arc<std::sync::atomic::AtomicBool>,
+    }
+    let up = Up { base: Default::default(), hits: Default::default(), down: Default::default() };
+    async fn search(AxState(u): AxState<Up>, Query(q): Query<HashMap<String, String>>) -> axum::response::Response {
+        use axum::response::IntoResponse;
+        if u.down.load(Ordering::SeqCst) {
+            return StatusCode::SERVICE_UNAVAILABLE.into_response();
+        }
+        u.hits.fetch_add(1, Ordering::SeqCst);
+        let base = u.base.get().unwrap();
+        axum::Json(json!({"results": [{"slug": "pdf-parser", "query": q.get("q"),
+            "downloadUrl": format!("{base}/api/v1/download?slug=pdf-parser&version=1.0.0")}]}))
+        .into_response()
+    }
+    async fn download(AxState(u): AxState<Up>, Query(q): Query<HashMap<String, String>>) -> axum::response::Response {
+        use axum::response::IntoResponse;
+        if u.down.load(Ordering::SeqCst) {
+            return StatusCode::SERVICE_UNAVAILABLE.into_response();
+        }
+        u.hits.fetch_add(1, Ordering::SeqCst);
+        let body = format!("PK-zip-of-{}-{}", q["slug"], q.get("version").map(String::as_str).unwrap_or("latest"));
+        ([("content-type", "application/zip")], body).into_response()
+    }
+    let app = axum::Router::new()
+        .route("/api/v1/search", axum::routing::get(search))
+        .route("/api/v1/download", axum::routing::get(download))
+        .with_state(up.clone());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let upstream = format!("http://{}", listener.local_addr().unwrap());
+    up.base.set(upstream.clone()).unwrap();
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+    let s = Server::start().await;
+    s.create_repo(json!({"name": "skillhub", "format": "skills", "kind": "proxy",
+        "config": {"proxy": {"remote_url": upstream, "metadata_max_age_secs": 1, "outbound": {"mode": "direct"}}}}))
+        .await;
+    let base = s.url("/repository/skillhub");
+
+    let doc: Value =
+        s.client.get(format!("{base}/api/v1/search?q=pdf&limit=5")).send().await.unwrap().json().await.unwrap();
+    assert_eq!(doc["results"][0]["query"], "pdf");
+    assert_eq!(doc["results"][0]["downloadUrl"], format!("{base}/api/v1/download?slug=pdf-parser&version=1.0.0"));
+    // Same query in another order → cache hit.
+    let before = up.hits.load(Ordering::SeqCst);
+    let r = s.client.get(format!("{base}/api/v1/search?limit=5&q=pdf")).send().await.unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    assert_eq!(up.hits.load(Ordering::SeqCst), before);
+
+    let zip = s.client.get(format!("{base}/api/v1/download?slug=pdf-parser&version=1.0.0")).send().await.unwrap();
+    assert_eq!(zip.headers()["content-type"], "application/zip");
+    assert_eq!(zip.text().await.unwrap(), "PK-zip-of-pdf-parser-1.0.0");
+    let latest = s.client.get(format!("{base}/api/v1/download?slug=pdf-parser")).send().await.unwrap();
+    assert_eq!(latest.text().await.unwrap(), "PK-zip-of-pdf-parser-latest");
+
+    // The pinned download is browsable under a readable path.
+    let tree: Value = s
+        .client
+        .get(s.url("/api/v1/repositories/skillhub/browse?path=api/v1/download/pdf-parser/"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(tree.to_string().contains("1.0.0"), "{tree}");
+
+    // Upstream outage: cached search results and downloads keep working.
+    up.down.store(true, Ordering::SeqCst);
+    tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+    let r = s.client.get(format!("{base}/api/v1/search?q=pdf&limit=5")).send().await.unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    let zip = s.client.get(format!("{base}/api/v1/download?version=1.0.0&slug=pdf-parser")).send().await.unwrap();
+    assert_eq!(zip.text().await.unwrap(), "PK-zip-of-pdf-parser-1.0.0");
+    let r = s.client.get(format!("{base}/api/v1/search?q=other")).send().await.unwrap();
+    assert_eq!(r.status(), StatusCode::BAD_GATEWAY);
+
+    // Discovery document points clients at Trove; the proxy is read-only.
+    let wk: Value =
+        s.client.get(format!("{base}/.well-known/clawhub.json")).send().await.unwrap().json().await.unwrap();
+    assert_eq!(wk["apiBase"], base);
+    let post = s.client.post(format!("{base}/api/v1/skills")).body("x").send().await.unwrap();
+    assert_eq!(post.status(), StatusCode::METHOD_NOT_ALLOWED);
+}
+
+#[tokio::test]
+async fn raw_proxy_content_max_age_revalidates() {
+    let s = Server::start().await;
+    s.create_repo(
+        json!({"name": "origin", "format": "raw", "kind": "hosted", "config": {"write_policy": "allow_redeploy"}}),
+    )
+    .await;
+    s.admin(reqwest::Method::PUT, "/repository/origin/index.json").body("v1").send().await.unwrap();
+    s.create_repo(json!({"name": "immutable", "format": "raw", "kind": "proxy",
+        "config": {"proxy": {"remote_url": s.url("/repository/origin/"), "outbound": {"mode": "direct"}}}}))
+        .await;
+    s.create_repo(json!({"name": "ttl", "format": "raw", "kind": "proxy",
+        "config": {"proxy": {"remote_url": s.url("/repository/origin/"), "content_max_age_secs": 1, "outbound": {"mode": "direct"}}}}))
+    .await;
+    let get = |r: &str| s.client.get(s.url(&format!("/repository/{r}/index.json"))).send();
+    assert_eq!(get("immutable").await.unwrap().text().await.unwrap(), "v1");
+    assert_eq!(get("ttl").await.unwrap().text().await.unwrap(), "v1");
+    s.admin(reqwest::Method::PUT, "/repository/origin/index.json").body("v2").send().await.unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+    assert_eq!(get("immutable").await.unwrap().text().await.unwrap(), "v1");
+    assert_eq!(get("ttl").await.unwrap().text().await.unwrap(), "v2");
+    let cfg: Value =
+        s.admin(reqwest::Method::GET, "/api/v1/repositories/ttl").send().await.unwrap().json().await.unwrap();
+    assert_eq!(cfg["config"]["proxy"]["content_max_age_secs"], 1);
+}

@@ -1,17 +1,17 @@
 // Typed client for the Trove management API (/api/v1).
 
-export type Format = "raw" | "maven" | "npm" | "pypi" | "cargo" | "docker" | "apt" | "yum";
+export type Format = "raw" | "maven" | "npm" | "pypi" | "cargo" | "docker" | "apt" | "yum" | "git" | "skills";
 export type RepoKind = "hosted" | "proxy" | "group";
 export type Role = "viewer" | "deployer" | "admin";
 export type WritePolicy = "allow_redeploy" | "allow_once" | "read_only";
 export type VersionPolicy = "release" | "snapshot" | "mixed";
 
-export const FORMATS: Format[] = ["maven", "npm", "pypi", "cargo", "docker", "apt", "yum", "raw"];
+export const FORMATS: Format[] = ["maven", "npm", "pypi", "cargo", "docker", "apt", "yum", "git", "skills", "raw"];
 export const KINDS: RepoKind[] = ["hosted", "proxy", "group"];
 
 /** Repository types implemented per format (mirrors the server). */
 export function supportedKinds(format: Format): RepoKind[] {
-  if (format === "apt" || format === "yum") return ["proxy"];
+  if (format === "apt" || format === "yum" || format === "git" || format === "skills") return ["proxy"];
   if (format === "docker") return ["proxy", "group"];
   return KINDS;
 }
@@ -34,6 +34,7 @@ export interface ProxyConfig {
   offline: boolean;
   invalidated_at?: number;
   outbound?: OutboundProxy;
+  content_max_age_secs?: number;
 }
 
 export interface RemoteTestResult {

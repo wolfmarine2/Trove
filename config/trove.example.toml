@@ -69,6 +69,15 @@ no_proxy = ""
 # signed by an internal CA.
 ca_bundle = ""
 
+[git]
+# Git proxy repositories run this binary (the container image includes git).
+binary = "git"
+# Bare mirrors of upstream repositories. Empty: <data_dir>/git. Must be a
+# local disk even when blobs are stored in S3.
+mirror_dir = ""
+# Upper bound for one clone or fetch from a remote, in seconds.
+fetch_timeout_secs = 3600
+
 [ui]
 # Serve the web UI from this directory instead of the copy embedded in the
 # binary. Useful during UI development: dir = "web/dist"
