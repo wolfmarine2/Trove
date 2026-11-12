@@ -1440,16 +1440,6 @@ checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
 
 [[package]]
 name = "md-5"
-version = "0.10.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d89e7ee0cfbedfc4da3340218492196241d89eefb6dab27de5df917a6d2e78cf"
-dependencies = [
- "cfg-if",
- "digest 0.10.7",
-]
-
-[[package]]
-name = "md-5"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "69b6441f590336821bb897fb28fc622898ccceb1d6cea3fde5ea86b090c4de98"
@@ -1575,7 +1565,7 @@ dependencies = [
  "humantime",
  "hyper",
  "itertools",
- "md-5 0.11.0",
+ "md-5",
  "nix",
  "parking_lot",
  "percent-encoding",
@@ -2474,7 +2464,7 @@ dependencies = [
  "hmac",
  "itoa",
  "log",
- "md-5 0.11.0",
+ "md-5",
  "memchr",
  "rand",
  "serde",
@@ -2979,7 +2969,7 @@ dependencies = [
  "futures",
  "hex",
  "lzma-rs",
- "md-5 0.10.6",
+ "md-5",
  "mime_guess",
  "percent-encoding",
  "quick-xml 0.42.0",
@@ -3014,7 +3004,7 @@ dependencies = [
  "bytes",
  "futures",
  "hex",
- "md-5 0.10.6",
+ "md-5",
  "object_store",
  "sha1 0.10.7",
  "sha2 0.10.9",
