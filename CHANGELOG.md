@@ -24,6 +24,13 @@ All notable changes to this project are documented here. The format follows
 - Raw proxies: optional file revalidation (`content_max_age_secs`) for
   mutable files such as marketplace indexes on a branch.
 - DeepSeek Harness `.npmrc` snippet for npm repositories.
+- YUM group repositories: merged repodata (primary, filelists, other,
+  updateinfo, modules; comps from the first member) with package
+  de-duplication, rebuilt when a member changes; gzip, xz, zstd and bzip2
+  member metadata.
+- Group deployment: a group's writable member receives uploads sent to the
+  group (Maven, npm, PyPI, Cargo, Raw), so one URL serves downloads and
+  publishing.
 - Per-repository outbound proxy for proxy repositories: server default,
   direct, or a custom HTTP, HTTPS, SOCKS5 or SOCKS5h proxy with credentials
   and a bypass list. Docker token requests follow the same route.

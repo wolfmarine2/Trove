@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import {
   api,
   FORMATS,
+  GROUP_DEPLOYMENT_FORMATS,
   supportedKinds,
   type ContentDisposition,
   type Format,
@@ -70,6 +71,7 @@ export function RepoForm({ existing, onSaved }: { existing?: Repository; onSaved
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<RemoteTestResult | null>(null);
   const [members, setMembers] = useState<string[]>(existing?.config.group?.members ?? []);
+  const [writable, setWritable] = useState(existing?.config.group?.writable_member ?? "");
   const [pick, setPick] = useState("");
   const [error, setError] = useState<unknown>();
   const [saved, setSaved] = useState(false);
@@ -125,7 +127,8 @@ export function RepoForm({ existing, onSaved }: { existing?: Repository; onSaved
     if (format === "raw") config.content_disposition = disposition;
     if (format === "maven") config.version_policy = versionPolicy;
     if (kind === "proxy") config.proxy = proxyConfig();
-    if (kind === "group") config.group = { members };
+    if (kind === "group")
+      config.group = { members, writable_member: writable && members.includes(writable) ? writable : undefined };
     try {
       if (editing) {
         await api.updateRepo(existing!.name, { description, online, config });
@@ -384,6 +387,21 @@ export function RepoForm({ existing, onSaved }: { existing?: Repository; onSaved
               {t("form.addMember")}
             </button>
           </div>
+          {GROUP_DEPLOYMENT_FORMATS.includes(format) && (
+            <Field label={t("form.writable")} help={t("form.writableHelp")} htmlFor="writable">
+              <select id="writable" value={writable} onChange={(e) => setWritable(e.target.value)}>
+                <option value="">{t("form.writableNone")}</option>
+                {members
+                  .filter((m) => (allRepos ?? []).find((r) => r.name === m)?.kind === "hosted")
+                  .map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+              </select>
+            </Field>
+          )}
+          {format === "yum" && <p className="help">{t("form.yumGroupHelp")}</p>}
         </div>
       )}
 

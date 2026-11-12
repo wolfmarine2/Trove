@@ -42,6 +42,9 @@ pub fn classify(path: &str) -> Policy {
 }
 
 pub async fn handle(ctx: Ctx) -> Result<Response> {
+    if ctx.repo.kind == trove_core::model::RepoKind::Group {
+        return super::yum_group::handle(ctx).await;
+    }
     path_proxy::handle(ctx, classify).await
 }
 

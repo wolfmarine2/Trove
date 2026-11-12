@@ -29,7 +29,7 @@ box and scales out on PostgreSQL (or openGauss) with S3-compatible storage.
 | Raw    | ✓ any file: web upload (files/folders) or HTTP PUT | ✓ | ✓ | curl, browser |
 | Docker / OCI | — (push planned) | ✓ Docker Hub, GHCR, Quay, Harbor…, token auth, digest-verified | ✓ | Registry API v2 (docker, containerd) |
 | APT    | — | ✓ Debian, Ubuntu, Kylin, UOS; by-hash aware | — | apt 2.7 |
-| YUM / DNF | — | ✓ openEuler, RHEL family, Fedora, EPEL | — | Registry layout (dnf) |
+| YUM / DNF | — | ✓ openEuler, RHEL family, Fedora, EPEL | ✓ merged repodata | dnf 4 |
 | Git    | — | ✓ GitHub, Gitee, GitLab…: mirrored clones, source archives, raw files | — | git 2.43, pnpm `github:` deps, DeepSeek Harness / Claude Code plugins |
 | Skills | — | ✓ SkillHub (skillhub.cn), ClawHub and compatible skill marketplaces | — | ClawHub HTTP API, curl |
 
@@ -73,6 +73,10 @@ npm-proxy    (proxy → https://registry.npmjs.org/) ─┤→ npm-public (group
 
 Put hosted repositories first in a group so that private packages always win
 over public packages with the same name (dependency-confusion protection).
+Make `npm-hosted` the group's *writable member* and `npm publish` to the group
+URL lands there, so clients need a single URL. YUM groups merge the members'
+repodata, e.g. openEuler OS + update + EPOL behind one `baseurl`
+([groups](docs/formats.md#groups)).
 
 ## Documentation
 

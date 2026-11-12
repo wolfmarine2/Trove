@@ -10,8 +10,12 @@ export const FORMATS: Format[] = ["maven", "npm", "pypi", "cargo", "docker", "ap
 export const KINDS: RepoKind[] = ["hosted", "proxy", "group"];
 
 /** Repository types implemented per format (mirrors the server). */
+/** Formats whose groups can forward uploads to a hosted member. */
+export const GROUP_DEPLOYMENT_FORMATS: Format[] = ["raw", "maven", "npm", "pypi", "cargo"];
+
 export function supportedKinds(format: Format): RepoKind[] {
-  if (format === "apt" || format === "yum" || format === "git" || format === "skills") return ["proxy"];
+  if (format === "apt" || format === "git" || format === "skills") return ["proxy"];
+  if (format === "yum") return ["proxy", "group"];
   if (format === "docker") return ["proxy", "group"];
   return KINDS;
 }
@@ -50,7 +54,7 @@ export type ContentDisposition = "attachment" | "inline";
 export interface RepoConfig {
   write_policy: WritePolicy;
   proxy?: ProxyConfig;
-  group?: { members: string[] };
+  group?: { members: string[]; writable_member?: string };
   version_policy?: VersionPolicy;
   private?: boolean;
   content_disposition?: ContentDisposition;

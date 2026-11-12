@@ -33,7 +33,7 @@ HTTP status. Timestamps are milliseconds since the Unix epoch.
 | GET | `/system/audit?actor=&action=&limit=&offset=` | admin | Audit events, newest first |
 
 Supported `kind` per `format`: maven, npm, pypi, cargo, raw — hosted, proxy,
-group; docker — proxy, group; apt, yum — proxy.
+group; docker, yum — proxy, group; apt, git, skills — proxy.
 
 The Docker Registry API v2 is served separately under `/v2/` (see
 [client setup](formats.md#docker--oci-pull-through-cache)).
@@ -52,6 +52,7 @@ Repository `config` shape:
     "username": "",
     "password": "",
     "offline": false,
+    "content_max_age_secs": 0,
     "outbound": {
       "mode": "inherit | direct | custom",
       "url": "socks5h://proxy.corp:1080",
@@ -60,9 +61,12 @@ Repository `config` shape:
       "no_proxy": ".corp.example,10.0.0.0/8"
     }
   },
-  "group": { "members": ["npm-hosted", "npm-proxy"] }
+  "group": { "members": ["npm-hosted", "npm-proxy"], "writable_member": "npm-hosted" }
 }
 ```
+
+`writable_member` (optional; maven, npm, pypi, cargo, raw) must be a hosted
+member of the group; writes sent to the group go to it.
 
 Example: create a proxy for PyPI.
 

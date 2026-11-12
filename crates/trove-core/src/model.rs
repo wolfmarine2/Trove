@@ -56,10 +56,15 @@ string_enum!(
 
 impl Format {
     /// Repository kinds implemented for this format.
+    /// Formats whose groups can forward uploads to a hosted member.
+    pub fn supports_group_deployment(&self) -> bool {
+        matches!(self, Format::Raw | Format::Maven | Format::Npm | Format::Pypi | Format::Cargo)
+    }
+
     pub fn supported_kinds(&self) -> &'static [RepoKind] {
         match self {
-            Format::Apt | Format::Yum | Format::Git | Format::Skills => &[RepoKind::Proxy],
-            Format::Docker => &[RepoKind::Proxy, RepoKind::Group],
+            Format::Apt | Format::Git | Format::Skills => &[RepoKind::Proxy],
+            Format::Docker | Format::Yum => &[RepoKind::Proxy, RepoKind::Group],
             _ => &[RepoKind::Hosted, RepoKind::Proxy, RepoKind::Group],
         }
     }
@@ -203,6 +208,10 @@ pub struct GroupConfig {
     /// Ordered list of member repository names. The first match wins for
     /// content; metadata is merged where the format supports it.
     pub members: Vec<String>,
+    /// Hosted member that receives uploads sent to the group ("group
+    /// deployment"), so one URL serves both downloads and publishing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub writable_member: Option<String>,
 }
 
 /// Per-repository settings stored as JSON.
@@ -256,6 +265,11 @@ impl Repository {
     }
     pub fn members(&self) -> &[String] {
         self.config.group.as_ref().map(|g| g.members.as_slice()).unwrap_or(&[])
+    }
+
+    /// The member that receives writes sent to this group, if any.
+    pub fn writable_member(&self) -> Option<&str> {
+        self.config.group.as_ref().and_then(|g| g.writable_member.as_deref()).filter(|m| !m.is_empty())
     }
 
     /// Validate structural invariants of a repository definition.

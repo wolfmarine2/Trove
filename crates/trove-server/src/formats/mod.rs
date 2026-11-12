@@ -11,6 +11,7 @@ pub mod pypi;
 pub mod raw;
 pub mod skills;
 pub mod yum;
+pub mod yum_group;
 
 use std::collections::HashMap;
 
@@ -20,7 +21,7 @@ use axum::http::{HeaderMap, Method, Uri};
 use axum::response::Response;
 use bytes::Bytes;
 use futures::TryStreamExt;
-use trove_core::model::{Format, Repository};
+use trove_core::model::{Format, RepoKind, Repository};
 use trove_core::{Error, Result};
 
 use crate::auth::{self, Principal};
@@ -118,6 +119,12 @@ async fn dispatch_inner(state: AppState, repo_name: String, path: String, req: R
     if raw_path.ends_with('/') && !path.is_empty() && !path.ends_with('/') {
         path.push('/');
     }
+    // Group deployment: uploads sent to a group go to its writable member.
+    let group_format = repo.format;
+    let repo = match writable_target(&state, repo, &parts.method, &path).await {
+        Ok(r) => r,
+        Err(e) => return render_error(group_format, e, json_errors),
+    };
     let format = repo.format;
     let ctx = Ctx {
         state,
@@ -143,6 +150,26 @@ async fn dispatch_inner(state: AppState, repo_name: String, path: String, req: R
         Format::Docker => docker::handle_repository_path(ctx).await,
     };
     result.unwrap_or_else(|e| render_error(format, e, json_errors))
+}
+
+/// For a write to a group with a writable member, the member to write to.
+async fn writable_target(state: &AppState, repo: Repository, method: &Method, path: &str) -> Result<Repository> {
+    let write = !matches!(*method, Method::GET | Method::HEAD | Method::OPTIONS);
+    // npm audits are POSTed but are reads, answered through a proxy member.
+    let npm_read = repo.format == Format::Npm && path.starts_with("-/npm/v1/security/");
+    let Some(member) = repo.writable_member().filter(|_| write && !npm_read && repo.kind == RepoKind::Group) else {
+        return Ok(repo);
+    };
+    let target = state.repo(member).await.map_err(|_| {
+        Error::internal(format!("writable member '{member}' of group '{}' no longer exists", repo.name))
+    })?;
+    if target.kind != RepoKind::Hosted || target.format != repo.format {
+        return Err(Error::internal(format!(
+            "writable member '{member}' of group '{}' is not a hosted {} repository",
+            repo.name, repo.format
+        )));
+    }
+    Ok(target)
 }
 
 fn render_error(format: Format, e: Error, json: bool) -> Response {

@@ -3,13 +3,14 @@
 
 use axum::http::Method;
 use axum::response::Response;
-use trove_core::model::{Asset, RepoKind};
+use trove_core::model::{Asset, RepoKind, Repository};
 use trove_core::util::normalize_path;
 use trove_core::{Error, Result};
 
 use super::Ctx;
 use crate::content;
 use crate::proxy::{self, FetchOpts};
+use crate::state::AppState;
 
 /// How a path should be cached.
 pub struct Policy {
@@ -38,7 +39,16 @@ pub async fn handle(ctx: Ctx, classify: fn(&str) -> Policy) -> Result<Response> 
 }
 
 async fn fetch(ctx: &Ctx, path: &str, classify: fn(&str) -> Policy) -> Result<Option<Asset>> {
-    let (state, repo) = (&ctx.state, &ctx.repo);
+    fetch_from(&ctx.state, &ctx.repo, path, classify).await
+}
+
+/// Fetch `path` through a proxy repository, applying the format's cache policy.
+pub async fn fetch_from(
+    state: &AppState,
+    repo: &Repository,
+    path: &str,
+    classify: fn(&str) -> Policy,
+) -> Result<Option<Asset>> {
     if repo.kind != RepoKind::Proxy || !repo.online {
         return Ok(None);
     }

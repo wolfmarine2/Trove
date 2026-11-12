@@ -601,7 +601,7 @@ async fn yum_and_apt_proxies_refresh_metadata() {
         .await;
     let group = s
         .admin(reqwest::Method::POST, "/api/v1/repositories")
-        .json(&json!({"name": "g", "format": "yum", "kind": "group", "config": {"group": {"members": ["el"]}}}))
+        .json(&json!({"name": "g", "format": "apt", "kind": "group", "config": {"group": {"members": ["ubuntu"]}}}))
         .send()
         .await
         .unwrap();
@@ -1324,4 +1324,224 @@ async fn raw_proxy_content_max_age_revalidates() {
     let cfg: Value =
         s.admin(reqwest::Method::GET, "/api/v1/repositories/ttl").send().await.unwrap().json().await.unwrap();
     assert_eq!(cfg["config"]["proxy"]["content_max_age_secs"], 1);
+}
+
+#[tokio::test]
+async fn group_deployment_writes_to_the_writable_member() {
+    let s = Server::start().await;
+    let token = s.token().await;
+    // Validation: the writable member must be a hosted member of the group.
+    s.create_repo(json!({"name": "raw-local", "format": "raw", "kind": "hosted"})).await;
+    s.create_repo(json!({"name": "raw-cache", "format": "raw", "kind": "proxy",
+        "config": {"proxy": {"remote_url": "http://127.0.0.1:9/"}}}))
+        .await;
+    let bad = |cfg: Value| s.admin(reqwest::Method::POST, "/api/v1/repositories").json(&cfg).send();
+    for (writable, members) in [("raw-cache", json!(["raw-local", "raw-cache"])), ("raw-local", json!(["raw-cache"]))] {
+        let r = bad(json!({"name": "raw-bad", "format": "raw", "kind": "group",
+            "config": {"group": {"members": members, "writable_member": writable}}}))
+        .await
+        .unwrap();
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST, "{}", r.text().await.unwrap());
+    }
+    s.create_repo(json!({"name": "raw-all", "format": "raw", "kind": "group",
+        "config": {"group": {"members": ["raw-cache", "raw-local"], "writable_member": "raw-local"}}}))
+        .await;
+
+    // Raw: PUT and DELETE through the group land in the member.
+    let r = s.admin(reqwest::Method::PUT, "/repository/raw-all/certs/ca.crt").body("CA").send().await.unwrap();
+    assert_eq!(r.status(), StatusCode::CREATED);
+    let direct = s.client.get(s.url("/repository/raw-local/certs/ca.crt")).send().await.unwrap();
+    assert_eq!(direct.text().await.unwrap(), "CA");
+    let via_group = s.client.get(s.url("/repository/raw-all/certs/ca.crt")).send().await.unwrap();
+    assert_eq!(via_group.text().await.unwrap(), "CA");
+    let anon = s.client.put(s.url("/repository/raw-all/x")).body("x").send().await.unwrap();
+    assert_eq!(anon.status(), StatusCode::UNAUTHORIZED);
+    let r = s.admin(reqwest::Method::DELETE, "/repository/raw-all/certs/ca.crt").send().await.unwrap();
+    assert!(r.status().is_success());
+    assert_eq!(
+        s.client.get(s.url("/repository/raw-local/certs/ca.crt")).send().await.unwrap().status(),
+        StatusCode::NOT_FOUND
+    );
+
+    // npm: publish to the group URL, install from it.
+    s.create_repo(json!({"name": "npm-local", "format": "npm", "kind": "hosted"})).await;
+    s.create_repo(json!({"name": "npm-all", "format": "npm", "kind": "group",
+        "config": {"group": {"members": ["npm-local"], "writable_member": "npm-local"}}}))
+        .await;
+    let tgz = b"tarball";
+    let doc = json!({
+        "_id": "demo", "name": "demo", "dist-tags": {"latest": "1.0.0"},
+        "versions": {"1.0.0": {"name": "demo", "version": "1.0.0", "dist": {"tarball": "http://ignored/demo/-/demo-1.0.0.tgz"}}},
+        "_attachments": {"demo-1.0.0.tgz": {"content_type": "application/octet-stream", "data": base64::engine::general_purpose::STANDARD.encode(tgz), "length": tgz.len()}},
+    });
+    let r = s.client.put(s.url("/repository/npm-all/demo")).bearer_auth(&token).json(&doc).send().await.unwrap();
+    assert_eq!(r.status(), StatusCode::CREATED);
+    let p: Value = s.client.get(s.url("/repository/npm-local/demo")).send().await.unwrap().json().await.unwrap();
+    assert_eq!(p["dist-tags"]["latest"], "1.0.0");
+    let p: Value = s.client.get(s.url("/repository/npm-all/demo")).send().await.unwrap().json().await.unwrap();
+    assert_eq!(p["versions"]["1.0.0"]["dist"]["tarball"], s.url("/repository/npm-all/demo/-/demo-1.0.0.tgz"));
+    // Audits are reads and still answered by the group.
+    let audit = s
+        .client
+        .post(s.url("/repository/npm-all/-/npm/v1/security/advisories/bulk"))
+        .json(&json!({}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(audit.status(), StatusCode::OK);
+
+    // Cargo: `cargo publish` against the group's index.
+    s.create_repo(json!({"name": "crates-local", "format": "cargo", "kind": "hosted"})).await;
+    s.create_repo(json!({"name": "crates-all", "format": "cargo", "kind": "group",
+        "config": {"group": {"members": ["crates-local"], "writable_member": "crates-local"}}}))
+        .await;
+    let meta = serde_json::to_vec(&json!({"name": "demo", "vers": "0.1.0", "deps": [], "features": {}, "links": null}))
+        .unwrap();
+    let mut body = Vec::new();
+    body.extend_from_slice(&(meta.len() as u32).to_le_bytes());
+    body.extend_from_slice(&meta);
+    body.extend_from_slice(&5u32.to_le_bytes());
+    body.extend_from_slice(b"crate");
+    let r = s
+        .client
+        .put(s.url("/repository/crates-all/api/v1/crates/new"))
+        .header("authorization", &token)
+        .body(body)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    let index =
+        s.client.get(s.url("/repository/crates-all/index/de/mo/demo")).send().await.unwrap().text().await.unwrap();
+    assert!(index.contains("\"vers\":\"0.1.0\""), "{index}");
+
+    // Groups without a writable member stay read-only.
+    s.create_repo(
+        json!({"name": "raw-ro", "format": "raw", "kind": "group", "config": {"group": {"members": ["raw-local"]}}}),
+    )
+    .await;
+    let r = s.admin(reqwest::Method::PUT, "/repository/raw-ro/x").body("x").send().await.unwrap();
+    assert_eq!(r.status(), StatusCode::METHOD_NOT_ALLOWED);
+}
+
+/// Gzip a string (YUM repodata).
+fn gzip(s: &str) -> Vec<u8> {
+    use std::io::Write;
+    let mut e = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+    e.write_all(s.as_bytes()).unwrap();
+    e.finish().unwrap()
+}
+
+/// Minimal YUM repository: (repomd.xml, primary file name, primary.xml.gz).
+fn yum_repo(pkgs: &[(&str, &str)]) -> (String, String, Vec<u8>) {
+    let mut primary = format!(
+        "<?xml version=\"1.0\"?>\n<metadata xmlns=\"http://linux.duke.edu/metadata/common\" packages=\"{}\">\n",
+        pkgs.len()
+    );
+    for (name, id) in pkgs {
+        primary.push_str(&format!("<package type=\"rpm\"><name>{name}</name><checksum type=\"sha256\" pkgid=\"YES\">{id}</checksum><location href=\"Packages/{name}.rpm\"/></package>\n"));
+    }
+    primary.push_str("</metadata>\n");
+    let gz = gzip(&primary);
+    let sha = trove_core::util::sha256_hex(&gz);
+    let file = format!("{sha}-primary.xml.gz");
+    let repomd = format!(
+        "<?xml version=\"1.0\"?>\n<repomd xmlns=\"http://linux.duke.edu/metadata/repo\">\n<revision>1</revision>\n<data type=\"primary\"><checksum type=\"sha256\">{sha}</checksum><location href=\"repodata/{file}\"/></data>\n</repomd>\n"
+    );
+    (repomd, file, gz)
+}
+
+#[tokio::test]
+async fn yum_group_merges_repodata_and_follows_member_updates() {
+    let s = Server::start().await;
+    for up in ["os-up", "upd-up"] {
+        s.create_repo(
+            json!({"name": up, "format": "raw", "kind": "hosted", "config": {"write_policy": "allow_redeploy"}}),
+        )
+        .await;
+    }
+    let publish = |up: &'static str, pkgs: Vec<(&'static str, &'static str)>| {
+        let s = &s;
+        async move {
+            let (repomd, file, gz) = yum_repo(&pkgs);
+            s.admin(reqwest::Method::PUT, &format!("/repository/{up}/repodata/{file}")).body(gz).send().await.unwrap();
+            s.admin(reqwest::Method::PUT, &format!("/repository/{up}/repodata/repomd.xml"))
+                .body(repomd)
+                .send()
+                .await
+                .unwrap();
+            for (name, _) in pkgs {
+                s.admin(reqwest::Method::PUT, &format!("/repository/{up}/Packages/{name}.rpm"))
+                    .body(format!("rpm:{up}:{name}"))
+                    .send()
+                    .await
+                    .unwrap();
+            }
+        }
+    };
+    publish("os-up", vec![("bash", "b1"), ("curl", "c1")]).await;
+    publish("upd-up", vec![("curl", "c1"), ("openssl", "o1")]).await;
+    for (name, up) in [("os", "os-up"), ("update", "upd-up")] {
+        s.create_repo(json!({"name": name, "format": "yum", "kind": "proxy", "config": {"proxy": {
+            "remote_url": s.url(&format!("/repository/{up}/")), "metadata_max_age_secs": 1, "outbound": {"mode": "direct"}}}}))
+        .await;
+    }
+    s.create_repo(json!({"name": "openeuler", "format": "yum", "kind": "group", "config": {"group": {"members": ["os", "update"]}}})).await;
+
+    let get = |p: String| s.client.get(s.url(&format!("/repository/openeuler/{p}"))).send();
+    let primary_of = |repomd: String| {
+        let s = &s;
+        async move {
+            let start = repomd.find("<location href=\"").unwrap() + 16;
+            let href = &repomd[start..start + repomd[start..].find('"').unwrap()];
+            let gz = s
+                .client
+                .get(s.url(&format!("/repository/openeuler/{href}")))
+                .send()
+                .await
+                .unwrap()
+                .bytes()
+                .await
+                .unwrap();
+            let mut out = String::new();
+            std::io::Read::read_to_string(&mut flate2::read::GzDecoder::new(&gz[..]), &mut out).unwrap();
+            out
+        }
+    };
+    let repomd = get("repodata/repomd.xml".into()).await.unwrap().text().await.unwrap();
+    let primary = primary_of(repomd.clone()).await;
+    assert!(primary.contains("packages=\"3\""), "{primary}");
+    for name in ["bash", "curl", "openssl"] {
+        assert_eq!(primary.matches(&format!("<name>{name}</name>")).count(), 1, "{name}: {primary}");
+    }
+    // Packages come from the member that has them.
+    assert_eq!(get("Packages/openssl.rpm".into()).await.unwrap().text().await.unwrap(), "rpm:upd-up:openssl");
+    assert_eq!(get("Packages/curl.rpm".into()).await.unwrap().text().await.unwrap(), "rpm:os-up:curl");
+    // Unchanged members → the same generated repomd.
+    assert_eq!(get("repodata/repomd.xml".into()).await.unwrap().text().await.unwrap(), repomd);
+    // The merged metadata is not signed.
+    assert_eq!(get("repodata/repomd.xml.asc".into()).await.unwrap().status(), StatusCode::NOT_FOUND);
+
+    // An update upstream is picked up after the member's max age.
+    publish("upd-up", vec![("curl", "c1"), ("openssl", "o2"), ("vim", "v1")]).await;
+    tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+    let repomd2 = get("repodata/repomd.xml".into()).await.unwrap().text().await.unwrap();
+    assert_ne!(repomd2, repomd);
+    let primary2 = primary_of(repomd2.clone()).await;
+    assert!(primary2.contains("packages=\"4\"") && primary2.contains("<name>vim</name>"), "{primary2}");
+
+    // A member that becomes unreachable does not shrink the group: its cached
+    // metadata (stale-on-error) keeps the last merge valid.
+    let r = s
+        .admin(reqwest::Method::PUT, "/api/v1/repositories/update")
+        .json(&json!({"online": true, "config": {"proxy": {"remote_url": "http://127.0.0.1:9/", "metadata_max_age_secs": 1, "outbound": {"mode": "direct"}}}}))
+        .send()
+        .await
+        .unwrap();
+    assert!(r.status().is_success(), "{}", r.text().await.unwrap());
+    tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+    let repomd3 = get("repodata/repomd.xml".into()).await.unwrap().text().await.unwrap();
+    assert!(primary_of(repomd3).await.contains("<name>vim</name>"));
+    assert!(!get("Packages/vim.rpm".into()).await.unwrap().status().is_success()); // never cached
+    assert_eq!(get("Packages/openssl.rpm".into()).await.unwrap().text().await.unwrap(), "rpm:upd-up:openssl");
 }

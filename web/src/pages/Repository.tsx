@@ -86,6 +86,11 @@ function RepoFacts({ repo }: { repo: Repository }) {
             </li>
           ))}
         </ol>
+        {repo.config.group?.writable_member && (
+          <span>
+            · {t("repo.uploadsTo")} <Link to={`/repositories/${repo.config.group.writable_member}`}>{repo.config.group.writable_member}</Link>
+          </span>
+        )}
       </div>
     );
   return (
@@ -131,7 +136,7 @@ function Browse({ repo, path, onChanged }: { repo: Repository; path: string; onC
   const { confirm, element } = useConfirm();
   const segments = path ? path.split("/") : [];
   const base = `/repositories/${repo.name}/browse`;
-  const hostedRaw = repo.format === "raw" && repo.kind === "hosted";
+  const hostedRaw = repo.format === "raw" && (repo.kind === "hosted" || !!repo.config.group?.writable_member);
   const canUpload = hostedRaw && (user?.role === "deployer" || user?.role === "admin");
   const canDeleteDir = repo.kind !== "group" && user?.role === "admin" && path !== "" && (data?.entries.length ?? 0) > 0;
 

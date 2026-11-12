@@ -27,7 +27,7 @@ crates.io、Docker Hub、Ubuntu、openEuler 等），同时托管内部发布的
 | Raw | ✓ 任意文件：网页上传（文件/文件夹）或 HTTP PUT | ✓ | ✓ | curl、浏览器 |
 | Docker / OCI | —（推送计划中） | ✓ Docker Hub、GHCR、Quay、Harbor 等，支持 token 鉴权，校验摘要 | ✓ | Registry API v2（docker、containerd） |
 | APT | — | ✓ Debian、Ubuntu、麒麟、统信 UOS，支持 by-hash | — | apt 2.7 |
-| YUM / DNF | — | ✓ openEuler、RHEL 系、Fedora、EPEL | — | 仓库目录布局（dnf） |
+| YUM / DNF | — | ✓ openEuler、RHEL 系、Fedora、EPEL | ✓ 合并 repodata | dnf 4 |
 | Git | — | ✓ GitHub、Gitee、GitLab 等：镜像克隆、源码包、单文件 | — | git 2.43、pnpm `github:` 依赖、DeepSeek Harness / Claude Code 插件 |
 | Skills | — | ✓ SkillHub（skillhub.cn）、ClawHub 及兼容的技能市场 | — | ClawHub HTTP API、curl |
 
@@ -66,6 +66,9 @@ npm-proxy   (proxy → https://registry.npmjs.org/) ─┤→ npm-public (group)
 ```
 
 在 group 里把 hosted 仓库排在最前面，同名时私有包优先，可防范依赖混淆攻击。
+把 `npm-hosted` 设为组的「可写成员」后，向组地址 `npm publish` 会写入它，客户端只需一个地址。
+YUM 组会合并成员的 repodata，例如把 openEuler OS + update + EPOL 放在同一个 `baseurl` 下
+（见[组仓库](docs/formats.md#groups)）。
 
 ## 文档
 

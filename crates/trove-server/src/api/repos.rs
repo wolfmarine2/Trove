@@ -128,6 +128,14 @@ fn normalise_config(format: Format, kind: RepoKind, config: &mut RepoConfig) {
 }
 
 async fn validate_members(state: &AppState, repo: &Repository) -> Result<()> {
+    if let Some(w) = repo.writable_member() {
+        if !repo.format.supports_group_deployment() {
+            return Err(Error::bad_request(format!("{} groups cannot have a writable member", repo.format)));
+        }
+        if !repo.members().iter().any(|m| m == w) {
+            return Err(Error::bad_request(format!("writable member '{w}' must be one of the group's members")));
+        }
+    }
     for m in repo.members() {
         let member = state
             .db
@@ -142,6 +150,9 @@ async fn validate_members(state: &AppState, repo: &Repository) -> Result<()> {
             return Err(Error::bad_request(format!(
                 "group member '{m}' is private; make the group private too, or remove the member"
             )));
+        }
+        if repo.writable_member() == Some(m.as_str()) && member.kind != RepoKind::Hosted {
+            return Err(Error::bad_request(format!("writable member '{m}' must be a hosted repository")));
         }
         // Reject direct cycles (A contains B contains A).
         if member.members().iter().any(|n| n == &repo.name) {
