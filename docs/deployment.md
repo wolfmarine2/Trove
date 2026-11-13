@@ -188,3 +188,24 @@ extra blobs are reclaimed by garbage collection.
 
 Migrations run automatically at start-up. Take a backup, roll out the new
 version; with PostgreSQL rolling updates are safe within a minor version.
+
+## Troubleshooting outbound proxies
+
+`tunnel error: unsuccessful` means the outbound HTTP proxy refused to open an
+HTTPS tunnel (`CONNECT host:443`); plain `http://` remotes do not use
+CONNECT, which is why they may work through the same proxy. Press **Test
+connection** in the repository settings: Trove repeats the CONNECT itself and
+shows the proxy's answer, for example
+`answered CONNECT repo.openeuler.org:443 with "HTTP/1.1 403 Forbidden" [Server: squid]`.
+
+| Proxy answer | Meaning | Fix |
+| ------------ | ------- | --- |
+| 403 | Policy/whitelist forbids the host or port 443 | Have the host allowed, or use an `http://` mirror |
+| 407 | Credentials required | Proxy username/password (Basic only; not NTLM/Kerberos) |
+| 400 / 405 / 501 | This port does not support CONNECT | Check the proxy port |
+| 502 / 503 / 504 | The proxy cannot reach the host | Proxy's DNS/firewall/parent proxy |
+| not HTTP | Wrong protocol | `socks5h://` for SOCKS ports, `https://` for TLS proxies |
+
+The same check by hand from inside the container network:
+`curl -v -x http://proxy:3128 https://repo.openeuler.org/` (look at the line
+after `CONNECT`).

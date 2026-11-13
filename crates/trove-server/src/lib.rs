@@ -4,6 +4,7 @@ pub mod api;
 pub mod audit;
 pub mod auth;
 pub mod content;
+pub mod diagnose;
 pub mod error;
 pub mod formats;
 pub mod gc;

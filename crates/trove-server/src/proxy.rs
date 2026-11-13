@@ -125,8 +125,11 @@ pub async fn fetch_opts(
     let resp = match send_authenticated(state, repo, reqwest::Method::GET, url, opts.registry_auth, &conditional).await
     {
         Ok(r) => r,
-        Err(detail) => {
+        Err(mut detail) => {
             Metrics::inc(&state.metrics.upstream_errors);
+            if detail.contains("tunnel error") {
+                detail.push_str(" (the outbound proxy refused CONNECT; \"Test connection\" in the repository settings shows its answer)");
+            }
             tracing::warn!(repo = %repo.name, %url, error = %detail, "upstream request failed");
             return match cached {
                 Some(a) => Ok(Some(a)),

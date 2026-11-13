@@ -412,6 +412,17 @@ pub async fn test_remote(
                 message.push_str(&c.to_string());
                 src = c.source();
             }
+            // The HTTP stack drops the proxy's answer to CONNECT; ask it directly.
+            if message.contains("tunnel error")
+                && let Ok(target) = url::Url::parse(&url)
+                && let Some((proxy, user, pass)) =
+                    crate::diagnose::effective_http_proxy(&state.cfg, &req.proxy.outbound, &target)
+            {
+                let probe =
+                    crate::diagnose::probe_connect(&proxy, &user, &pass, &target, &state.cfg.http_client.user_agent)
+                        .await;
+                message = format!("{probe}. ({message})");
+            }
             RemoteTestResult { ok: false, url, status: None, elapsed_ms: started.elapsed().as_millis() as u64, message }
         }
     };

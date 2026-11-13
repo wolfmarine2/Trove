@@ -1545,3 +1545,38 @@ async fn yum_group_merges_repodata_and_follows_member_updates() {
     assert!(!get("Packages/vim.rpm".into()).await.unwrap().status().is_success()); // never cached
     assert_eq!(get("Packages/openssl.rpm".into()).await.unwrap().text().await.unwrap(), "rpm:upd-up:openssl");
 }
+
+#[tokio::test]
+async fn remote_test_explains_a_refused_proxy_tunnel() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    // A proxy that refuses every CONNECT, as a Squid ACL would.
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let proxy = format!("http://{}", listener.local_addr().unwrap());
+    tokio::spawn(async move {
+        loop {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            tokio::spawn(async move {
+                let mut buf = [0u8; 2048];
+                let _ = sock.read(&mut buf).await;
+                let _ = sock
+                    .write_all(b"HTTP/1.1 403 Forbidden\r\nServer: squid\r\nContent-Length: 13\r\n\r\nAccess Denied")
+                    .await;
+            });
+        }
+    });
+    let s = Server::start().await;
+    let r: Value = s
+        .admin(reqwest::Method::POST, "/api/v1/remote-test")
+        .json(&json!({"format": "yum", "proxy": {"remote_url": "https://repo.example.org/",
+            "outbound": {"mode": "custom", "url": proxy}}}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(r["ok"], false);
+    let msg = r["message"].as_str().unwrap();
+    assert!(msg.contains("\"HTTP/1.1 403 Forbidden\""), "{msg}");
+    assert!(msg.contains("repo.example.org:443") && msg.contains("Access Denied"), "{msg}");
+}
