@@ -32,6 +32,8 @@ All notable changes to this project are documented here. The format follows
   under another path (`https://mirrors.example.com/<repo>/` →
   `/repository/<repo>/`): npm tarball, PyPI and Cargo links, download URLs
   and UI snippets use it.
+- The UI shows non-JSON error responses (from a gateway or WAF in front of
+  Trove) with their status and text instead of a JSON parse error.
 - "Test connection" explains refused HTTPS tunnels: when the outbound proxy
   rejects CONNECT, Trove asks the proxy directly and shows its status line,
   identifying headers and error page, with a hint for 403/407/405/502 and

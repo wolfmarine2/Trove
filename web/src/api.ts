@@ -183,9 +183,22 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   });
   if (resp.status === 204) return undefined as T;
   const text = await resp.text();
-  const data = text ? JSON.parse(text) : undefined;
+  let data: unknown;
+  try {
+    data = text ? JSON.parse(text) : undefined;
+  } catch {
+    // Not from Trove (a gateway, proxy or WAF between the browser and Trove
+    // answered): show what came back instead of a JSON parse error.
+    const server = resp.headers.get("server");
+    const snippet = text.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 200);
+    throw new ApiError(
+      resp.status,
+      `HTTP ${resp.status}${server ? ` (Server: ${server})` : ""} from something in front of Trove: ${snippet || resp.statusText}`,
+    );
+  }
   if (!resp.ok) {
-    throw new ApiError(resp.status, (data && data.error) || resp.statusText);
+    const err = data as { error?: string } | undefined;
+    throw new ApiError(resp.status, err?.error || resp.statusText);
   }
   return data as T;
 }
