@@ -71,6 +71,8 @@ export interface Repository {
   created_at: number;
   updated_at: number;
   url: string;
+  /** host[:port] for docker pull */
+  registry_host: string;
   asset_count: number;
   total_size: number;
 }

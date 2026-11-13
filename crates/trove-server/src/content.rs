@@ -50,8 +50,14 @@ pub fn base_url(state: &AppState, headers: &HeaderMap) -> String {
     format!("{proto}://{host}")
 }
 
+/// External URL under which repositories are served (no trailing slash).
+pub fn repository_base(state: &AppState, headers: &HeaderMap) -> String {
+    let configured = state.cfg.server.repository_base_url.trim().trim_end_matches('/');
+    if configured.is_empty() { format!("{}/repository", base_url(state, headers)) } else { configured.to_string() }
+}
+
 pub fn repo_url(state: &AppState, headers: &HeaderMap, repo: &Repository) -> String {
-    format!("{}/repository/{}", base_url(state, headers), repo.name)
+    format!("{}/{}", repository_base(state, headers), repo.name)
 }
 
 pub fn guess_content_type(path: &str) -> String {

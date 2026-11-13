@@ -22,6 +22,8 @@ pub struct RepoView {
     #[serde(flatten)]
     repo: Repository,
     url: String,
+    /// `host[:port]` for `docker pull` (the registry API is always at `/v2/`).
+    registry_host: String,
     asset_count: i64,
     total_size: i64,
 }
@@ -45,7 +47,15 @@ async fn view(
     stats: &HashMap<String, (i64, i64)>,
 ) -> RepoView {
     let (asset_count, total_size) = stats.get(&repo.id).copied().unwrap_or((0, 0));
-    RepoView { url: content::repo_url(state, headers, &repo), repo: masked(repo), asset_count, total_size }
+    let base = content::base_url(state, headers);
+    let registry_host = base.split_once("://").map(|(_, h)| h).unwrap_or(&base).to_string();
+    RepoView {
+        url: content::repo_url(state, headers, &repo),
+        registry_host,
+        repo: masked(repo),
+        asset_count,
+        total_size,
+    }
 }
 
 async fn stats_map(state: &AppState) -> Result<HashMap<String, (i64, i64)>> {

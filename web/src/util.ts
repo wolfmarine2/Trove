@@ -33,7 +33,7 @@ export function relativeTime(ms: number | null | undefined, lang: string): strin
 
 /** Address users type: Docker images live under host/repo, others under the repository URL. */
 export function displayUrl(repo: Repository): string {
-  if (repo.format === "docker") return `${repo.url.replace(/^https?:\/\//, "").replace("/repository/", "/")}/`;
+  if (repo.format === "docker") return `${repo.registry_host}/${repo.name}/`;
   return `${repo.url}/`;
 }
 

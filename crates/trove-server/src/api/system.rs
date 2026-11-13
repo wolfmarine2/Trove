@@ -33,7 +33,7 @@ pub async fn stats(State(state): State<AppState>, principal: Principal, headers:
         let entry = by_format.entry(r.format.to_string()).or_insert(json!(0));
         *entry = json!(entry.as_i64().unwrap_or(0) + 1);
     }
-    let base = content::base_url(&state, &headers);
+    let base = content::repository_base(&state, &headers);
     let names: std::collections::HashMap<_, _> =
         repos.iter().filter(|r| principal.can_read_repo(&state, r)).map(|r| (r.id.clone(), r.name.clone())).collect();
     let recent: Vec<Value> = state
@@ -47,7 +47,7 @@ pub async fn stats(State(state): State<AppState>, principal: Principal, headers:
             json!({
                 "id": a.id, "path": a.path, "repository": repo, "size": a.blob.size,
                 "updated_at": a.updated_at, "uploader": a.uploader,
-                "download_url": format!("{base}/repository/{repo}/{}", content::encode_path(&a.path)),
+                "download_url": format!("{base}/{repo}/{}", content::encode_path(&a.path)),
             })
         })
         .collect();

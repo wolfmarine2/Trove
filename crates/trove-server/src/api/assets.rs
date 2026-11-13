@@ -64,13 +64,13 @@ pub async fn search(
             offset: q.offset,
         })
         .await?;
-    let base = content::base_url(&state, &headers);
+    let base = content::repository_base(&state, &headers);
     let items: Vec<AssetView> = assets
         .into_iter()
         .filter_map(|a| {
             let r = repos.get(&a.repo_id)?;
             Some(AssetView {
-                download_url: format!("{base}/repository/{}/{}", r.name, content::encode_path(&a.path)),
+                download_url: format!("{base}/{}/{}", r.name, content::encode_path(&a.path)),
                 repository: r.name.clone(),
                 format: r.format.to_string(),
                 asset: a,
@@ -90,9 +90,9 @@ pub async fn get_one(
     let asset = state.db.get_asset_by_id(&id).await?.ok_or_else(|| Error::not_found("asset"))?;
     let repo = state.db.get_repo(&asset.repo_id).await?.ok_or_else(|| Error::not_found("repository"))?;
     principal.require_repo_read(&state, &repo)?;
-    let base = content::base_url(&state, &headers);
+    let base = content::repository_base(&state, &headers);
     Ok(Json(AssetView {
-        download_url: format!("{base}/repository/{}/{}", repo.name, content::encode_path(&asset.path)),
+        download_url: format!("{base}/{}/{}", repo.name, content::encode_path(&asset.path)),
         repository: repo.name,
         format: repo.format.to_string(),
         asset,

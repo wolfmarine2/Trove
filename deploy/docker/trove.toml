@@ -9,6 +9,11 @@ data_dir = "/data"
 # Public URL when running behind a reverse proxy / ingress, e.g.
 # TROVE__SERVER__BASE_URL=https://trove.corp.example
 base_url = ""
+# Public URL under which repositories are served when a reverse proxy maps
+# them to another path, e.g. "https://mirrors.example.com" for
+# "location / { proxy_pass http://trove:8081/repository/; }".
+# Empty: <base_url>/repository.
+repository_base_url = ""
 
 [security]
 # Internal public mirror: downloads without an account.

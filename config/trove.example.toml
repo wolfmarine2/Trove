@@ -11,6 +11,11 @@ bind = "0.0.0.0:8081"
 # config.json, PyPI links). Set it when Trove runs behind a reverse proxy or
 # ingress. Empty: derived from the Host / X-Forwarded-* headers.
 base_url = ""
+# Public URL under which repositories are served when a reverse proxy maps
+# them to another path, e.g. "https://mirrors.example.com" for
+# "location / { proxy_pass http://trove:8081/repository/; }".
+# Empty: <base_url>/repository.
+repository_base_url = ""
 # Largest accepted upload, in MiB.
 max_upload_mb = 4096
 # SQLite database, filesystem blobs and temporary files live here.

@@ -20,6 +20,7 @@ The most important settings:
 | --- | ------- | ----- |
 | `server.bind` | `0.0.0.0:8081` | |
 | `server.base_url` | derived from request | Set behind a reverse proxy so generated URLs are correct. |
+| `server.repository_base_url` | `<base_url>/repository` | Public URL of repositories when the proxy maps them to another path (see [deployment](deployment.md#reverse-proxy)). |
 | `server.data_dir` | `data` | SQLite file, filesystem blobs, temp files. |
 | `server.max_upload_mb` | `4096` | Enforced while streaming. |
 | `database.url` | SQLite in `data_dir` | `postgres://…` for PostgreSQL or openGauss. |

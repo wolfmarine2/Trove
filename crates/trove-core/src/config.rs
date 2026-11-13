@@ -31,6 +31,12 @@ pub struct ServerConfig {
     /// (npm tarball links, Cargo `config.json`, PyPI file links).
     /// When empty, it is derived from the request `Host` header.
     pub base_url: String,
+    /// Externally visible URL under which repositories are reachable, for a
+    /// reverse proxy that maps them to a different path, e.g.
+    /// `https://mirrors.example.com` when `https://mirrors.example.com/<repo>/`
+    /// is proxied to `http://trove:8081/repository/<repo>/`. When empty it is
+    /// `<base_url>/repository`.
+    pub repository_base_url: String,
     /// Maximum accepted upload size in MiB.
     pub max_upload_mb: u64,
     /// Data directory for the default SQLite database and filesystem blob store.
@@ -42,6 +48,7 @@ impl Default for ServerConfig {
         Self {
             bind: "0.0.0.0:8081".into(),
             base_url: String::new(),
+            repository_base_url: String::new(),
             max_upload_mb: 4096,
             data_dir: PathBuf::from("data"),
         }

@@ -28,6 +28,10 @@ All notable changes to this project are documented here. The format follows
   updateinfo, modules; comps from the first member) with package
   de-duplication, rebuilt when a member changes; gzip, xz, zstd and bzip2
   member metadata.
+- `server.repository_base_url` for reverse proxies that serve repositories
+  under another path (`https://mirrors.example.com/<repo>/` →
+  `/repository/<repo>/`): npm tarball, PyPI and Cargo links, download URLs
+  and UI snippets use it.
 - "Test connection" explains refused HTTPS tunnels: when the outbound proxy
   rejects CONNECT, Trove asks the proxy directly and shows its status line,
   identifying headers and error page, with a hint for 403/407/405/502 and

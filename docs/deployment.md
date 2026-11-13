@@ -167,7 +167,52 @@ sizes, blob totals).
 
 ## Reverse proxy
 
-Set `server.base_url` to the public URL. Disable request buffering and body
+Trove emits absolute URLs in some metadata (npm tarball links, PyPI file
+links, Cargo `config.json`, skills JSON), so it must know the public URL.
+
+**Same paths** (recommended): forward everything unchanged; clients use
+`https://mirrors.example.com/repository/<repo>/`, and the UI, `/api` and
+`/v2/` work on the same host.
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name mirrors.example.com;
+    client_max_body_size 0;          # uploads/publishing
+    proxy_request_buffering off;
+    proxy_read_timeout 600s;
+    location / {
+        proxy_pass http://127.0.0.1:8081;   # no URI part: paths unchanged
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+}
+```
+
+**Short paths** (`https://mirrors.example.com/<repo>/`): proxy `/` to
+`/repository/` and tell Trove where repositories are, otherwise npm, pip and
+cargo get links containing `/repository/` that the proxy maps to
+`/repository/repository/…` (404). APT, YUM, Maven and raw use relative paths
+and work either way.
+
+```nginx
+    location / {
+        proxy_pass http://127.0.0.1:8081/repository/;
+        ...
+    }
+    location /v2/ {                      # Docker, if served on this host
+        proxy_pass http://127.0.0.1:8081/v2/;
+        ...
+    }
+```
+
+```toml
+[server]
+repository_base_url = "https://mirrors.example.com"   # TROVE__SERVER__REPOSITORY_BASE_URL
+```
+
+Disable request buffering and body
 size limits for `/repository/` and `/v2/`; artifacts and image layers can be
 gigabytes. Docker clients require HTTPS (or an `insecure-registries` entry), so
 terminate TLS in front of Trove when serving Docker repositories. Forward

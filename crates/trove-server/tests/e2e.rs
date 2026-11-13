@@ -22,8 +22,13 @@ const ADMIN: (&str, &str) = ("admin", "admin-password-1");
 
 impl Server {
     async fn start() -> Self {
+        Self::start_with(|_| {}).await
+    }
+
+    async fn start_with(tweak: impl FnOnce(&mut Config)) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let mut cfg = Config::default();
+        tweak(&mut cfg);
         cfg.server.data_dir = dir.path().to_path_buf();
         cfg.security.initial_admin_password = ADMIN.1.into();
         let state = trove_server::init(cfg).await.unwrap();
@@ -1579,4 +1584,30 @@ async fn remote_test_explains_a_refused_proxy_tunnel() {
     let msg = r["message"].as_str().unwrap();
     assert!(msg.contains("\"HTTP/1.1 403 Forbidden\""), "{msg}");
     assert!(msg.contains("repo.example.org:443") && msg.contains("Access Denied"), "{msg}");
+}
+
+#[tokio::test]
+async fn repository_base_url_for_path_rewriting_reverse_proxies() {
+    // nginx: location / { proxy_pass http://trove:8081/repository/; }
+    let s = Server::start_with(|c| c.server.repository_base_url = "https://mirrors.example.com/".into()).await;
+    s.create_repo(json!({"name": "npm-local", "format": "npm", "kind": "hosted"})).await;
+    s.create_repo(json!({"name": "pypi-local", "format": "pypi", "kind": "hosted"})).await;
+    s.create_repo(json!({"name": "crates", "format": "cargo", "kind": "hosted"})).await;
+    let tgz = b"tarball";
+    let doc = json!({"_id": "demo", "name": "demo", "dist-tags": {"latest": "1.0.0"},
+        "versions": {"1.0.0": {"name": "demo", "version": "1.0.0", "dist": {"tarball": "x"}}},
+        "_attachments": {"demo-1.0.0.tgz": {"data": base64::engine::general_purpose::STANDARD.encode(tgz), "length": 7}}});
+    s.admin(reqwest::Method::PUT, "/repository/npm-local/demo").json(&doc).send().await.unwrap();
+    let p: Value = s.client.get(s.url("/repository/npm-local/demo")).send().await.unwrap().json().await.unwrap();
+    assert_eq!(
+        p["versions"]["1.0.0"]["dist"]["tarball"],
+        "https://mirrors.example.com/npm-local/demo/-/demo-1.0.0.tgz"
+    );
+    let cfg: Value =
+        s.client.get(s.url("/repository/crates/index/config.json")).send().await.unwrap().json().await.unwrap();
+    assert!(cfg["dl"].as_str().unwrap().starts_with("https://mirrors.example.com/crates/"), "{cfg}");
+    let view: Value =
+        s.admin(reqwest::Method::GET, "/api/v1/repositories/pypi-local").send().await.unwrap().json().await.unwrap();
+    assert_eq!(view["url"], "https://mirrors.example.com/pypi-local");
+    assert_eq!(view["registry_host"], s.addr.to_string());
 }
