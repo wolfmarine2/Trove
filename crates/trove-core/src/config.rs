@@ -138,6 +138,19 @@ pub struct HttpClientConfig {
     /// Additional PEM CA bundle to trust (corporate TLS inspection, internal CAs).
     pub ca_bundle: String,
     pub user_agent: String,
+    /// TLS implementation for HTTPS remotes: `native` (the system OpenSSL,
+    /// same handshake as curl and dnf) or `rustls`. rustls sends short
+    /// ClientHellos (about 250–300 bytes) without padding, which some
+    /// firewalls and load balancers reset; OpenSSL pads them to 512 bytes.
+    pub tls_backend: TlsBackend,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum TlsBackend {
+    #[default]
+    Native,
+    Rustls,
 }
 
 impl Default for HttpClientConfig {
@@ -149,6 +162,7 @@ impl Default for HttpClientConfig {
             no_proxy: String::new(),
             ca_bundle: String::new(),
             user_agent: format!("Trove/{}", env!("CARGO_PKG_VERSION")),
+            tls_backend: TlsBackend::Native,
         }
     }
 }

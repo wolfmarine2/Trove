@@ -32,6 +32,10 @@ All notable changes to this project are documented here. The format follows
   under another path (`https://mirrors.example.com/<repo>/` →
   `/repository/<repo>/`): npm tarball, PyPI and Cargo links, download URLs
   and UI snippets use it.
+- HTTPS remotes use the system OpenSSL by default
+  (`http_client.tls_backend = "native"`): rustls' unpadded ~270-byte
+  ClientHello was reset by some firewalls while curl worked through the same
+  proxy. `rustls` remains selectable. The image now includes OpenSSL.
 - The UI shows non-JSON error responses (from a gateway or WAF in front of
   Trove) with their status and text instead of a JSON parse error.
 - "Test connection" explains refused HTTPS tunnels: when the outbound proxy

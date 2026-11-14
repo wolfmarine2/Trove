@@ -51,7 +51,7 @@ RUN SRC=/etc/apt/sources.list.d/debian.sources; \
         sed -i "s#http://deb.debian.org/debian-security\$#${APT_SECURITY_MIRROR%/}#" "$SRC"; \
     fi; \
     apt-get update \
-    && apt-get install -y --no-install-recommends cmake clang \
+    && apt-get install -y --no-install-recommends cmake clang libssl-dev pkg-config \
     && rm -rf /var/lib/apt/lists/*
 # Route crates.io through a mirror (e.g. a Trove Cargo proxy) when given.
 RUN if [ -n "$CARGO_REGISTRY" ]; then \
@@ -93,17 +93,17 @@ LABEL org.opencontainers.image.title="Trove" \
       org.opencontainers.image.licenses="Apache-2.0" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${REVISION}"
-# CA certificates for HTTPS remotes and git for Git proxy repositories; works
+# CA certificates and OpenSSL for HTTPS remotes, git for Git proxy repositories; works
 # on Debian/Ubuntu and openEuler/RHEL bases.
 RUN set -eu; \
     if command -v apt-get >/dev/null 2>&1; then \
-        apt-get update && apt-get install -y --no-install-recommends ca-certificates git \
+        apt-get update && apt-get install -y --no-install-recommends ca-certificates openssl git \
         && rm -rf /var/lib/apt/lists/*; \
         groupadd --system --gid 10001 trove; \
         useradd --system --uid 10001 --gid 10001 --home-dir /data --no-create-home --shell /usr/sbin/nologin trove; \
     else \
         PM=$(command -v dnf || command -v yum || command -v microdnf); \
-        $PM install -y ca-certificates git-core || $PM install -y ca-certificates git; \
+        $PM install -y ca-certificates openssl git-core || $PM install -y ca-certificates openssl git; \
         command -v useradd >/dev/null 2>&1 || $PM install -y shadow-utils || $PM install -y shadow; \
         $PM clean all; \
         groupadd -r -g 10001 trove; \

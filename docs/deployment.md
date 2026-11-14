@@ -254,3 +254,10 @@ shows the proxy's answer, for example
 The same check by hand from inside the container network:
 `curl -v -x http://proxy:3128 https://repo.openeuler.org/` (look at the line
 after `CONNECT`).
+
+`Connection reset by peer` on HTTPS remotes while `curl` from the same host
+(through the same proxy) works: a device on the path resets TLS handshakes
+it does not like. Trove uses the system OpenSSL by default
+(`http_client.tls_backend = "native"`), whose ClientHello matches curl's;
+with `rustls` the ClientHello is 250–300 bytes and unpadded, a size some
+firewalls and load balancers mishandle.

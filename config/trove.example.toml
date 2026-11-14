@@ -74,6 +74,11 @@ no_proxy = ""
 # signed by an internal CA.
 ca_bundle = ""
 
+# TLS implementation for HTTPS remotes: "native" (system OpenSSL, the same
+# handshake as curl/dnf; default) or "rustls". Some firewalls and load
+# balancers reset rustls' short, unpadded ClientHello.
+# tls_backend = "native"
+
 [git]
 # Git proxy repositories run this binary (the container image includes git).
 binary = "git"

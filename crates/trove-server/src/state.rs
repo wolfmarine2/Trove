@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::Context;
 use tokio::sync::{Mutex, RwLock};
-use trove_core::config::Config;
+use trove_core::config::{Config, TlsBackend};
 use trove_core::model::{OutboundMode, OutboundProxy, Repository};
 use trove_core::{Error, Result};
 use trove_db::Db;
@@ -234,6 +234,10 @@ pub fn build_http_client(cfg: &Config, choice: ProxyChoice<'_>) -> anyhow::Resul
         .read_timeout(Duration::from_secs(hc.timeout_secs))
         .connect_timeout(Duration::from_secs(hc.connect_timeout_secs))
         .redirect(reqwest::redirect::Policy::limited(10));
+    builder = match hc.tls_backend {
+        TlsBackend::Native => builder.tls_backend_native(),
+        TlsBackend::Rustls => builder.tls_backend_rustls(),
+    };
     builder = match choice {
         ProxyChoice::Environment => builder,
         ProxyChoice::Direct => builder.no_proxy(),
