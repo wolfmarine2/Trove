@@ -51,6 +51,7 @@ string_enum!(
         Yum => "yum",
         Git => "git",
         Skills => "skills",
+        Go => "go",
     }
 );
 
@@ -64,7 +65,7 @@ impl Format {
     pub fn supported_kinds(&self) -> &'static [RepoKind] {
         match self {
             Format::Apt | Format::Git | Format::Skills => &[RepoKind::Proxy],
-            Format::Docker | Format::Yum => &[RepoKind::Proxy, RepoKind::Group],
+            Format::Docker | Format::Yum | Format::Go => &[RepoKind::Proxy, RepoKind::Group],
             _ => &[RepoKind::Hosted, RepoKind::Proxy, RepoKind::Group],
         }
     }

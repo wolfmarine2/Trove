@@ -383,6 +383,7 @@ pub async fn test_remote(
         Format::Docker => format!("{}/v2/", remote.strip_suffix("/v2").unwrap_or(&remote)),
         Format::Cargo => format!("{remote}/config.json"),
         Format::Yum => format!("{remote}/repodata/repomd.xml"),
+        Format::Go => format!("{remote}/golang.org/x/text/@v/list"),
         _ => format!("{remote}/"),
     };
     let client = state.client_for_outbound(&req.proxy.outbound)?;

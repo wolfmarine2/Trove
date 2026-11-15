@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.1] - Unreleased
+
+### Added
+- Go module repositories (`go` format), proxy and group, speaking the GOPROXY
+  protocol: `.info`/`.mod`/`.zip` cached forever, `@v/list`, `@latest` and
+  version queries refreshed after the metadata max age. The checksum database
+  is proxied under `sumdb/`, so `go` verifies `go.sum` against
+  sum.golang.org through Trove. Groups merge the members' version lists. UI
+  snippets for `GOPROXY`/`GOSUMDB`/`GOPRIVATE` and `.netrc`.
+
 ## [0.3.0] - 2026-11-11
 
 ### Added
@@ -114,5 +124,6 @@ All notable changes to this project are documented here. The format follows
 - Prometheus metrics, health and readiness endpoints, JSON logging.
 - Dockerfile (amd64/arm64), docker-compose, Kustomize base and HA overlay.
 
-[Unreleased]: https://github.com/wolfmarine2/Trove/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/wolfmarine2/Trove/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/wolfmarine2/Trove/compare/v0.3.0...v0.4.1
 [0.3.0]: https://github.com/wolfmarine2/Trove/releases/tag/v0.3.0

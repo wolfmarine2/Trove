@@ -4,6 +4,7 @@ pub mod apt;
 pub mod cargo;
 pub mod docker;
 pub mod git;
+pub mod go;
 pub mod maven;
 pub mod npm;
 pub mod path_proxy;
@@ -148,6 +149,7 @@ async fn dispatch_inner(state: AppState, repo_name: String, path: String, req: R
         Format::Git => git::handle(ctx).await,
         Format::Skills => skills::handle(ctx).await,
         Format::Docker => docker::handle_repository_path(ctx).await,
+        Format::Go => go::handle(ctx).await,
     };
     result.unwrap_or_else(|e| render_error(format, e, json_errors))
 }

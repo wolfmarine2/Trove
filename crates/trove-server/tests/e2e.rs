@@ -1611,3 +1611,138 @@ async fn repository_base_url_for_path_rewriting_reverse_proxies() {
     assert_eq!(view["url"], "https://mirrors.example.com/pypi-local");
     assert_eq!(view["registry_host"], s.addr.to_string());
 }
+
+mod mock_goproxy {
+    //! A static GOPROXY upstream that counts requests per path.
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
+
+    use axum::Router;
+    use axum::extract::{Request, State};
+    use axum::http::StatusCode;
+    use axum::response::{IntoResponse, Response};
+
+    pub struct Upstream {
+        pub port: u16,
+        files: HashMap<String, Vec<u8>>,
+        pub hits: Mutex<HashMap<String, usize>>,
+    }
+
+    impl Upstream {
+        pub fn hits(&self, path: &str) -> usize {
+            self.hits.lock().unwrap().get(path).copied().unwrap_or(0)
+        }
+    }
+
+    async fn serve(State(u): State<Arc<Upstream>>, req: Request) -> Response {
+        let path = req.uri().path().trim_start_matches('/').to_string();
+        *u.hits.lock().unwrap().entry(path.clone()).or_default() += 1;
+        match u.files.get(&path) {
+            Some(body) => body.clone().into_response(),
+            // proxy.golang.org answers unknown modules with 404/410 and a text reason.
+            None => (StatusCode::GONE, format!("not found: {path}")).into_response(),
+        }
+    }
+
+    pub async fn start(files: &[(&str, &[u8])]) -> Arc<Upstream> {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let up = Arc::new(Upstream {
+            port,
+            files: files.iter().map(|(p, b)| (p.to_string(), b.to_vec())).collect(),
+            hits: Mutex::new(HashMap::new()),
+        });
+        let app = Router::new().fallback(serve).with_state(up.clone());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        up
+    }
+}
+
+#[tokio::test]
+async fn go_proxy_group_and_sumdb() {
+    let info = br#"{"Version":"v1.0.0","Time":"2024-01-02T03:04:05Z"}"#;
+    let a = mock_goproxy::start(&[
+        ("example.com/!my/mod/@v/list", b"v1.0.0\nv1.1.0\n"),
+        ("example.com/!my/mod/@v/v1.0.0.info", info),
+        ("example.com/!my/mod/@v/v1.0.0.mod", b"module example.com/My/mod\n"),
+        ("example.com/!my/mod/@v/v1.0.0.zip", b"PK-zip-bytes"),
+        ("example.com/!my/mod/@latest", br#"{"Version":"v1.1.0"}"#),
+        ("sumdb/sum.golang.org/supported", b""),
+        ("sumdb/sum.golang.org/lookup/example.com/!my/mod@v1.0.0", b"42\nexample.com/My/mod v1.0.0 h1:x=\n"),
+    ])
+    .await;
+    let b = mock_goproxy::start(&[
+        ("example.com/!my/mod/@v/list", b"v1.1.0\nv1.2.0\n"),
+        ("example.com/other/@v/list", b"v0.1.0\n"),
+        ("example.com/other/@v/v0.1.0.zip", b"other-zip"),
+    ])
+    .await;
+    let s = Server::start().await;
+    for (name, up) in [("go-a", &a), ("go-b", &b)] {
+        s.create_repo(json!({"name": name, "format": "go", "kind": "proxy",
+            "config": {"proxy": {"remote_url": format!("http://127.0.0.1:{}/", up.port)}}}))
+            .await;
+    }
+    s.create_repo(json!({"name": "go-all", "format": "go", "kind": "group",
+        "config": {"group": {"members": ["go-a", "go-b"]}}}))
+        .await;
+    let hosted = s
+        .admin(reqwest::Method::POST, "/api/v1/repositories")
+        .json(&json!({"name": "go-local", "format": "go", "kind": "hosted"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(hosted.status(), StatusCode::BAD_REQUEST);
+
+    let get = |path: &str| s.client.get(s.url(&format!("/repository/{path}"))).send();
+    let text = |path: &'static str| async move {
+        let resp = get(path).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK, "{path}");
+        resp.text().await.unwrap()
+    };
+
+    // Module files through a proxy; immutable content is cached after the first fetch.
+    assert_eq!(text("go-a/example.com/!my/mod/@v/v1.0.0.zip").await, "PK-zip-bytes");
+    assert_eq!(text("go-a/example.com/!my/mod/@v/v1.0.0.zip").await, "PK-zip-bytes");
+    assert_eq!(a.hits("example.com/!my/mod/@v/v1.0.0.zip"), 1);
+    assert_eq!(text("go-a/example.com/!my/mod/@v/v1.0.0.mod").await, "module example.com/My/mod\n");
+    assert!(text("go-a/example.com/!my/mod/@v/v1.0.0.info").await.contains("v1.0.0"));
+    assert!(text("go-a/example.com/!my/mod/@latest").await.contains("v1.1.0"));
+
+    // The group lists the union of its members' versions ...
+    assert_eq!(text("go-all/example.com/!my/mod/@v/list").await, "v1.0.0\nv1.1.0\nv1.2.0\n");
+    assert_eq!(text("go-all/example.com/other/@v/list").await, "v0.1.0\n");
+    // ... and serves files from the first member that has them.
+    assert_eq!(text("go-all/example.com/other/@v/v0.1.0.zip").await, "other-zip");
+    assert_eq!(text("go-all/example.com/!my/mod/@v/v1.0.0.zip").await, "PK-zip-bytes");
+    assert_eq!(a.hits("example.com/!my/mod/@v/v1.0.0.zip"), 1, "served from go-a's cache");
+
+    // Unknown modules are 404, so `GOPROXY=trove,direct` falls through.
+    assert_eq!(get("go-all/example.com/missing/@v/list").await.unwrap().status(), StatusCode::NOT_FOUND);
+    assert_eq!(get("go-a/example.com/missing/@v/v1.0.0.zip").await.unwrap().status(), StatusCode::NOT_FOUND);
+    // Paths the go command never sends are rejected without contacting the upstream.
+    for bad in ["go-a/example.com/My/mod/@v/list", "go-a/example.com/mod/@v/v1.0.0.tar", "go-a/example.com/mod"] {
+        assert_eq!(get(bad).await.unwrap().status(), StatusCode::NOT_FOUND, "{bad}");
+    }
+    assert_eq!(a.hits("example.com/My/mod/@v/list"), 0);
+
+    // The checksum database is proxied, so `go` verifies go.sum without reaching sum.golang.org.
+    assert_eq!(get("go-all/sumdb/sum.golang.org/supported").await.unwrap().status(), StatusCode::OK);
+    assert!(text("go-all/sumdb/sum.golang.org/lookup/example.com/!my/mod@v1.0.0").await.contains("h1:x="));
+
+    // Read-only.
+    let put = s.admin(reqwest::Method::PUT, "/repository/go-a/example.com/x/@v/v1.0.0.zip").body("x").send();
+    assert_eq!(put.await.unwrap().status(), StatusCode::METHOD_NOT_ALLOWED);
+
+    // Remote test probes a well-known module list.
+    let r: Value = s
+        .admin(reqwest::Method::POST, "/api/v1/remote-test")
+        .json(&json!({"format": "go", "proxy": {"remote_url": format!("http://127.0.0.1:{}/", b.port)}}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(r["url"].as_str().unwrap().ends_with("/golang.org/x/text/@v/list"), "{r}");
+}

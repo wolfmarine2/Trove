@@ -24,6 +24,7 @@ same name); a failing member is skipped; groups can contain groups.
 | Cargo  | ✓ | sparse index | ✓ |
 | Raw    | ✓ | directory listings | ✓ |
 | Docker | ✓ | tags, catalog | — (no hosted Docker yet) |
+| Go     | ✓ | `@v/list` (union of versions) | — |
 | YUM    | ✓ | repodata (see below) | — |
 | APT, Git, Skills | — | | |
 
@@ -212,6 +213,47 @@ Docker requires HTTPS; for a plain-HTTP test server add it to
 `insecure-registries`. Upstream credentials (Docker Hub account to avoid
 anonymous rate limits, private registries) go into the proxy's remote
 username/password. Pushing images is not supported yet.
+
+## Go modules (GOPROXY)
+
+Create a Go proxy per upstream module proxy and, optionally, a group:
+
+| Upstream | Remote URL |
+| -------- | ---------- |
+| Go module mirror (Google) | `https://proxy.golang.org/` |
+| goproxy.cn (Qiniu, mainland China) | `https://goproxy.cn/` |
+| Athens, Artifactory, another Trove | its GOPROXY URL |
+
+```sh
+go env -w GOPROXY=https://trove.example.com/repository/go/
+go env -w GOSUMDB=sum.golang.org                # the default; verified through Trove
+go env -w GOPRIVATE=git.example.com             # in-house modules: skip proxy and checksum database
+```
+
+In a Dockerfile or CI job: `ENV GOPROXY=https://trove.example.com/repository/go/`.
+
+* `.info`, `.mod` and `.zip` of a version are cached forever; `@v/list`,
+  `@latest` and version queries (`go get example.com/m@master`) are refreshed
+  after the repository's metadata max age.
+* The checksum database is proxied under `sumdb/<name>/`, so `go` verifies
+  `go.sum` against sum.golang.org without reaching it directly. This requires
+  an upstream that proxies the checksum database too (proxy.golang.org and
+  goproxy.cn do). Without one, set `GONOSUMDB`/`GOPRIVATE` for the affected
+  modules or `GOSUMDB=off` (not recommended).
+* Unknown modules return 404, so `GOPROXY=<trove>,direct` falls back to
+  fetching from version control as usual.
+* A group answers each file from the first member that has it and lists the
+  union of all members' versions.
+* With anonymous read switched off, put the credentials in `~/.netrc`:
+
+  ```text
+  machine trove.example.com
+    login your-user
+    password <TOKEN>
+  ```
+
+Publishing modules (hosted Go repositories) is not supported; serve in-house
+modules from Git with `GOPRIVATE`.
 
 ## APT (Debian, Ubuntu, Kylin, UOS)
 

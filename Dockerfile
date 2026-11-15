@@ -85,7 +85,7 @@ RUN find crates -name '*.rs' -exec touch {} + \
 
 # ---------------------------------------------------------------- runtime
 FROM ${RUNTIME_IMAGE}
-ARG VERSION=0.3.0
+ARG VERSION=0.4.1
 ARG REVISION=
 LABEL org.opencontainers.image.title="Trove" \
       org.opencontainers.image.description="Self-hosted universal artifact repository and internal mirror" \

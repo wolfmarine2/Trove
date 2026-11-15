@@ -1,12 +1,12 @@
 // Typed client for the Trove management API (/api/v1).
 
-export type Format = "raw" | "maven" | "npm" | "pypi" | "cargo" | "docker" | "apt" | "yum" | "git" | "skills";
+export type Format = "raw" | "maven" | "npm" | "pypi" | "cargo" | "go" | "docker" | "apt" | "yum" | "git" | "skills";
 export type RepoKind = "hosted" | "proxy" | "group";
 export type Role = "viewer" | "deployer" | "admin";
 export type WritePolicy = "allow_redeploy" | "allow_once" | "read_only";
 export type VersionPolicy = "release" | "snapshot" | "mixed";
 
-export const FORMATS: Format[] = ["maven", "npm", "pypi", "cargo", "docker", "apt", "yum", "git", "skills", "raw"];
+export const FORMATS: Format[] = ["maven", "npm", "pypi", "cargo", "go", "docker", "apt", "yum", "git", "skills", "raw"];
 export const KINDS: RepoKind[] = ["hosted", "proxy", "group"];
 
 /** Repository types implemented per format (mirrors the server). */
@@ -16,7 +16,7 @@ export const GROUP_DEPLOYMENT_FORMATS: Format[] = ["raw", "maven", "npm", "pypi"
 export function supportedKinds(format: Format): RepoKind[] {
   if (format === "apt" || format === "git" || format === "skills") return ["proxy"];
   if (format === "yum") return ["proxy", "group"];
-  if (format === "docker") return ["proxy", "group"];
+  if (format === "docker" || format === "go") return ["proxy", "group"];
   return KINDS;
 }
 

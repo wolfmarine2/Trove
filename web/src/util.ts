@@ -177,6 +177,22 @@ registry = "${index}"`,
       if (canPublish) out.push({ file: "shell", code: `cargo publish --registry ${repo.name}` });
       return out;
     }
+    case "go": {
+      const hostname = host.split("/")[0].split(":")[0];
+      const out: Snippet[] = [
+        {
+          file: "shell",
+          code: `go env -w GOPROXY=${url}/
+# go.sum is verified against sum.golang.org through Trove as well
+go env -w GOSUMDB=sum.golang.org
+# modules on your own Git server skip the proxy and the checksum database
+go env -w GOPRIVATE=git.example.com`,
+        },
+      ];
+      if (readAuth) out.push({ file: "~/.netrc", code: `machine ${hostname}\n  login your-user\n  password <TOKEN>` });
+      out.push({ file: "Dockerfile / CI", code: `ENV GOPROXY=${url}/ GOSUMDB=sum.golang.org` });
+      return out;
+    }
     case "docker": {
       const origin = url.replace(/\/repository\/.*$/, "");
       const registry = origin.replace(/^https?:\/\//, "");

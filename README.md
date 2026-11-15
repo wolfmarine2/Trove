@@ -28,6 +28,7 @@ box and scales out on PostgreSQL (or openGauss) with S3-compatible storage.
 | Cargo  | ✓ sparse index, publish, yank | ✓ crates.io, checksum-verified | ✓ | cargo 1.97 |
 | Raw    | ✓ any file: web upload (files/folders) or HTTP PUT | ✓ | ✓ | curl, browser |
 | Docker / OCI | — (push planned) | ✓ Docker Hub, GHCR, Quay, Harbor…, token auth, digest-verified | ✓ | Registry API v2 (docker, containerd) |
+| Go modules | — | ✓ proxy.golang.org, goproxy.cn…, checksum database proxied | ✓ merged version lists | go 1.24 |
 | APT    | — | ✓ Debian, Ubuntu, Kylin, UOS; by-hash aware | — | apt 2.7 |
 | YUM / DNF | — | ✓ openEuler, RHEL family, Fedora, EPEL | ✓ merged repodata | dnf 4 |
 | Git    | — | ✓ GitHub, Gitee, GitLab…: mirrored clones, source archives, raw files | — | git 2.43, pnpm `github:` deps, DeepSeek Harness / Claude Code plugins |
@@ -82,7 +83,7 @@ repodata, e.g. openEuler OS + update + EPOL behind one `baseurl`
 
 * [Architecture](docs/architecture.md): crates, storage model, request flow
 * [Configuration](docs/configuration.md): every setting, environment overrides
-* [Client setup](docs/formats.md): Maven, Gradle, npm, pip, twine, uv, Cargo, curl
+* [Client setup](docs/formats.md): Maven, Gradle, npm, pip, twine, uv, Cargo, Go, curl
 * [Deployment](docs/deployment.md): Docker, Kubernetes, HA, backups, upgrades
 * [REST API](docs/api.md): management API used by the UI and automation
 
@@ -103,7 +104,7 @@ docs/             documentation
 ## Status
 
 Trove 0.2 covers the day-to-day workflows of the formats above. Docker image
-push (hosted), hosted APT/YUM, Go modules, Helm charts, per-repository
+push (hosted), hosted APT/YUM, Helm charts, per-repository
 permissions, LDAP/OIDC and cleanup policies are on the
 [roadmap](docs/architecture.md#roadmap).
 

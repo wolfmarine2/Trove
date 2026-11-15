@@ -26,6 +26,7 @@ crates.io、Docker Hub、Ubuntu、openEuler 等），同时托管内部发布的
 | Cargo | ✓ sparse 索引、publish、yank | ✓ crates.io，校验 checksum | ✓ | cargo 1.97 |
 | Raw | ✓ 任意文件：网页上传（文件/文件夹）或 HTTP PUT | ✓ | ✓ | curl、浏览器 |
 | Docker / OCI | —（推送计划中） | ✓ Docker Hub、GHCR、Quay、Harbor 等，支持 token 鉴权，校验摘要 | ✓ | Registry API v2（docker、containerd） |
+| Go 模块 | — | ✓ proxy.golang.org、goproxy.cn 等，同时代理校验和数据库 | ✓ 合并版本列表 | go 1.24 |
 | APT | — | ✓ Debian、Ubuntu、麒麟、统信 UOS，支持 by-hash | — | apt 2.7 |
 | YUM / DNF | — | ✓ openEuler、RHEL 系、Fedora、EPEL | ✓ 合并 repodata | dnf 4 |
 | Git | — | ✓ GitHub、Gitee、GitLab 等：镜像克隆、源码包、单文件 | — | git 2.43、pnpm `github:` 依赖、DeepSeek Harness / Claude Code 插件 |
@@ -74,7 +75,7 @@ YUM 组会合并成员的 repodata，例如把 openEuler OS + update + EPOL 放�
 
 * [架构](docs/architecture.md)：crate 划分、存储模型、请求流程、路线图
 * [配置](docs/configuration.md)：全部配置项与环境变量覆盖
-* [客户端配置](docs/formats.md)：Maven、Gradle、npm、pip、twine、uv、Cargo、curl
+* [客户端配置](docs/formats.md)：Maven、Gradle、npm、pip、twine、uv、Cargo、Go、curl
 * [部署](docs/deployment.md)：Docker、Kubernetes、高可用、备份与升级
 * [REST API](docs/api.md)：前端和自动化脚本使用的管理接口
 

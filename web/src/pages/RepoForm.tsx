@@ -23,6 +23,7 @@ const DEFAULT_REMOTES: Record<Format, string> = {
   npm: "https://registry.npmjs.org/",
   pypi: "https://pypi.org/simple/",
   cargo: "https://index.crates.io/",
+  go: "https://proxy.golang.org/",
   docker: "https://registry-1.docker.io",
   apt: "http://archive.ubuntu.com/ubuntu/",
   yum: "https://repo.openeuler.org/openEuler-24.03-LTS/OS/x86_64/",
@@ -275,7 +276,7 @@ export function RepoForm({ existing, onSaved }: { existing?: Repository; onSaved
               />
             </Field>
           )}
-          {(format === "git" || format === "skills") && <p className="help">{t(`form.remoteHint.${format}`)}</p>}
+          {(format === "git" || format === "skills" || format === "go") && <p className="help">{t(`form.remoteHint.${format}`)}</p>}
           <div className="two">
             <Field label={t("form.remoteUser")} htmlFor="ruser">
               <input id="ruser" value={remoteUser} onChange={(e) => setRemoteUser(e.target.value)} autoComplete="off" />

@@ -119,6 +119,7 @@ function Setup({ repo }: { repo: Repository }) {
       {(repo.format === "apt" || repo.format === "yum") && <p className="help">{t("repo.osNote")}</p>}
       {repo.format === "git" && <p className="help">{t("repo.gitNote")}</p>}
       {repo.format === "skills" && <p className="help">{t("repo.skillsNote")}</p>}
+      {repo.format === "go" && <p className="help">{t("repo.goNote")}</p>}
       {needsToken && <p className="help">{t(publicRead ? "repo.tokenNotePublish" : "repo.tokenNote")}</p>}
       {publicRead && !needsToken && <p className="help">{t("repo.anonymousNote")}</p>}
     </div>

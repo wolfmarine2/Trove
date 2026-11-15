@@ -108,7 +108,7 @@ own keys.
 
 * Docker / OCI hosted repositories (push), blob mounting
 * Hosted APT (signed `InRelease`) and YUM (`createrepo`-style metadata)
-* Go module proxy, Helm, NuGet, RubyGems, Conda
+* Hosted Go modules, Helm, NuGet, RubyGems, Conda
 * Per-repository permissions and content selectors
 * LDAP and OIDC sign-in
 * Cleanup policies (age, last download, snapshot retention)
