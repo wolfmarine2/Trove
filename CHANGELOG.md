@@ -6,7 +6,7 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.4.1] - Unreleased
+## [0.4.1] - 2026-11-15
 
 ### Added
 - Go module repositories (`go` format), proxy and group, speaking the GOPROXY
